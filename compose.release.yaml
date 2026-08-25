@@ -1,0 +1,64 @@
+name: deepspace-archive
+
+services:
+  backend:
+    image: music8704/deepspace-archive-backend:${DSA_VERSION:-latest}
+    container_name: deepspace-archive-backend
+    restart: unless-stopped
+
+    environment:
+      NODE_ENV: production
+
+      # Inside Docker the media root is always /media.
+      MEDIA_LIBRARY_PATH: /media
+
+      # Docker owns the media mount path. Users change DSA_MEDIA_PATH
+      # in .env rather than changing /media inside the container.
+      MEDIA_LIBRARY_PATH_LOCKED: "true"
+
+      # Keep mutable application state outside the image.
+      DEEPSPACE_ARCHIVE_DATA_DIR: /app/data
+      DEEPSPACE_ARCHIVE_CACHE_DIR: /app/cache
+
+    volumes:
+      # Persistent application databases/settings.
+      - ${DSA_DATA_PATH:-./docker-data}:/app/data
+
+      # Regenerable thumbnails/cache.
+      - ${DSA_CACHE_PATH:-./docker-cache}:/app/cache
+
+      # User-supplied Love and Deepspace archive.
+      - ${DSA_MEDIA_PATH:?Set DSA_MEDIA_PATH in .env}:/media
+
+    ports:
+      # Optional direct backend access for diagnostics.
+      - "${DSA_BACKEND_PORT:-3001}:3001"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  frontend:
+    image: music8704/deepspace-archive-frontend:${DSA_VERSION:-latest}
+    container_name: deepspace-archive-frontend
+    restart: unless-stopped
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    ports:
+      - "${DSA_WEB_PORT:-8081}:80"
+
+networks:
+  default:
+    name: deepspace-archive

@@ -1,0 +1,157 @@
+name: Publish Release Bundle
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to package for a manual test, e.g. 0.1.0-beta.3"
+        required: false
+        default: "dev"
+
+permissions:
+  contents: write
+
+jobs:
+  release-bundle:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            version="${{ github.event.release.tag_name }}"
+            version="${version#v}"
+          else
+            version="${{ inputs.version }}"
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker release bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.version.outputs.version }}"
+
+          rm -rf release-bundle
+          mkdir -p release-bundle
+
+          cp compose.release.yaml release-bundle/compose.yaml
+
+          cat > release-bundle/.env.example <<EOF
+          # DeepSpace Archive Docker configuration
+          #
+          # Copy this file to .env and edit DSA_MEDIA_PATH.
+
+          # Host path to the root of your Love and Deepspace archive.
+          #
+          # Synology example:
+          # DSA_MEDIA_PATH=/volume1/Media Files/All LADS Content Archive
+          #
+          # Linux example:
+          # DSA_MEDIA_PATH=/mnt/media/All LADS Content Archive
+          #
+          # Windows Docker Desktop example:
+          # DSA_MEDIA_PATH=Z:/All LADS Content Archive
+          DSA_MEDIA_PATH=/path/to/All LADS Content Archive
+
+          # Persistent application data and regenerable cache.
+          DSA_DATA_PATH=./docker-data
+          DSA_CACHE_PATH=./docker-cache
+
+          # Main web interface and optional direct backend diagnostics.
+          DSA_WEB_PORT=8081
+          DSA_BACKEND_PORT=3001
+
+          # Release version.
+          DSA_VERSION=${version}
+          EOF
+
+          cat > release-bundle/README.txt <<EOF
+          DeepSpace Archive ${version}
+          Docker / NAS quick start
+          ========================================
+
+          1. Copy .env.example to .env
+
+             Linux / NAS:
+               cp .env.example .env
+
+             Windows PowerShell:
+               Copy-Item .env.example .env
+
+          2. Edit .env and set DSA_MEDIA_PATH to your archive folder.
+
+          3. Start DeepSpace Archive:
+
+               docker compose pull
+               docker compose up -d
+
+          4. Open:
+
+               http://<server-ip>:8081
+
+          Synology example:
+               DSA_MEDIA_PATH=/volume1/Media Files/All LADS Content Archive
+
+          Update to a newer release:
+          - change DSA_VERSION in .env
+          - run:
+               docker compose pull
+               docker compose up -d
+
+          Application databases/settings are stored in DSA_DATA_PATH and
+          are not replaced when containers are recreated.
+          EOF
+
+          (
+            cd release-bundle
+            zip -r "../DeepSpaceArchive-Docker-${version}.zip" .
+          )
+
+      - name: Create SHA-256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.version.outputs.version }}"
+
+          sha256sum \
+            "DeepSpaceArchive-Docker-${version}.zip" \
+            > "SHA256SUMS-${version}.txt"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepSpaceArchive-Release-Bundle-${{ steps.version.outputs.version }}
+          path: |
+            DeepSpaceArchive-Docker-${{ steps.version.outputs.version }}.zip
+            SHA256SUMS-${{ steps.version.outputs.version }}.txt
+          if-no-files-found: error
+
+      - name: Attach bundle to GitHub Release
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.version.outputs.version }}"
+
+          gh release upload \
+            "${{ github.event.release.tag_name }}" \
+            "DeepSpaceArchive-Docker-${version}.zip" \
+            "SHA256SUMS-${version}.txt" \
+            --clobber

@@ -1,0 +1,80 @@
+# --------------------------------
+# Personal media
+# Never upload these files
+# --------------------------------
+
+frontend/public/media/
+
+
+# --------------------------------
+# Environment / private settings
+# --------------------------------
+
+.env
+.env.local
+.env.*.local
+
+
+# --------------------------------
+# Local databases
+# --------------------------------
+
+*.db
+*.sqlite
+*.sqlite3
+
+
+# --------------------------------
+# Logs
+# --------------------------------
+
+*.log
+logs/
+
+
+# --------------------------------
+# Windows
+# --------------------------------
+
+Thumbs.db
+Desktop.ini
+
+
+# --------------------------------
+# VS Code local settings
+# --------------------------------
+
+.vscode/
+
+backend/cache/
+
+# DeepSpace Archive Docker runtime data
+.env.docker
+docker-data/
+docker-cache/
+
+
+# --------------------------------
+# Node / build output
+# --------------------------------
+
+node_modules/
+dist/
+build/
+
+backend/data/
+backend/cache/
+
+docker-data/
+docker-cache/
+
+node_modules/
+**/node_modules/
+
+dist/
+**/dist/
+
+.env
+.env.*
+!.env.example
+!.env.release.example

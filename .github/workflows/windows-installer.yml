@@ -1,0 +1,239 @@
+name: Build Windows Installer
+
+on:
+  workflow_dispatch:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Determine release metadata
+        id: version
+        shell: pwsh
+        run: |
+          $buildDate =
+            (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+          $commit =
+            "${{ github.sha }}"
+
+          if ($commit.Length -gt 12) {
+            $commit =
+              $commit.Substring(
+                0,
+                12
+              )
+          }
+
+          if ("${{ github.event_name }}" -eq "release") {
+            $version =
+              "${{ github.event.release.tag_name }}".TrimStart("v")
+
+            if ("${{ github.event.release.prerelease }}" -eq "true") {
+              $channel =
+                "prerelease"
+            }
+            else {
+              $channel =
+                "stable"
+            }
+          }
+          else {
+            $version =
+              "dev"
+
+            $channel =
+              "development"
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "channel=$channel" >> $env:GITHUB_OUTPUT
+          "commit=$commit" >> $env:GITHUB_OUTPUT
+          "build_date=$buildDate" >> $env:GITHUB_OUTPUT
+
+          "DSA_VERSION=$version" >> $env:GITHUB_ENV
+
+          Write-Host "Version: $version"
+          Write-Host "Channel: $channel"
+          Write-Host "Commit: $commit"
+          Write-Host "Build date: $buildDate"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install and verify backend
+        working-directory: backend
+        shell: pwsh
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+
+      - name: Reduce backend to production dependencies
+        working-directory: backend
+        shell: pwsh
+        run: |
+          npm prune --omit=dev
+
+      - name: Install and build frontend
+        working-directory: frontend
+        shell: pwsh
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+      - name: Create production installer staging directory
+        shell: pwsh
+        run: |
+          $staging =
+            Join-Path `
+              $PWD `
+              "installer-staging"
+
+          if (Test-Path $staging) {
+            Remove-Item `
+              $staging `
+              -Recurse `
+              -Force
+          }
+
+          $backendStage =
+            Join-Path `
+              $staging `
+              "backend"
+
+          $frontendStage =
+            Join-Path `
+              $staging `
+              "frontend"
+
+          $runtimeStage =
+            Join-Path `
+              $staging `
+              "runtime"
+
+          New-Item -ItemType Directory -Force -Path $backendStage | Out-Null
+          New-Item -ItemType Directory -Force -Path $frontendStage | Out-Null
+          New-Item -ItemType Directory -Force -Path $runtimeStage | Out-Null
+
+          Copy-Item "Start-DeepSpaceArchive.bat" $staging
+          Copy-Item "Start-DeepSpaceArchive.ps1" $staging
+          Copy-Item "LICENSE" $staging
+
+          $releaseMetadata = [ordered]@{
+            version = "${{ steps.version.outputs.version }}"
+            channel = "${{ steps.version.outputs.channel }}"
+            commit = "${{ steps.version.outputs.commit }}"
+            buildDate = "${{ steps.version.outputs.build_date }}"
+            installation = "windows"
+          }
+
+          $releaseMetadata |
+            ConvertTo-Json |
+            Set-Content `
+              -LiteralPath (Join-Path $staging "release-metadata.json") `
+              -Encoding UTF8
+
+          function Invoke-RobocopySafe {
+            param(
+              [string]$Source,
+              [string]$Destination
+            )
+
+            robocopy $Source $Destination /E
+            $code = $LASTEXITCODE
+
+            if ($code -ge 8) {
+              throw "robocopy failed copying '$Source' to '$Destination' with exit code $code"
+            }
+
+            $global:LASTEXITCODE = 0
+          }
+
+          Invoke-RobocopySafe `
+            -Source "backend\dist" `
+            -Destination (Join-Path $backendStage "dist")
+
+          Invoke-RobocopySafe `
+            -Source "backend\node_modules" `
+            -Destination (Join-Path $backendStage "node_modules")
+
+          Copy-Item "backend\package.json" $backendStage
+          Copy-Item "backend\package-lock.json" $backendStage
+
+          Invoke-RobocopySafe `
+            -Source "frontend\dist" `
+            -Destination (Join-Path $frontendStage "dist")
+
+          $nodeExe = (Get-Command node).Source
+          $nodeRoot = Split-Path $nodeExe -Parent
+
+          Invoke-RobocopySafe `
+            -Source $nodeRoot `
+            -Destination $runtimeStage
+
+          @(
+            (Join-Path $backendStage "data"),
+            (Join-Path $backendStage "cache")
+          ) | ForEach-Object {
+            if (Test-Path $_) {
+              Remove-Item $_ -Recurse -Force
+            }
+          }
+
+          Write-Host "Production installer staging directory created successfully."
+          Write-Host "Release metadata:"
+          Get-Content (Join-Path $staging "release-metadata.json")
+
+          $global:LASTEXITCODE = 0
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            "installer\DeepSpaceArchive.iss"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepSpaceArchive-Windows-Installer-${{ steps.version.outputs.version }}
+          path: release/*.exe
+          if-no-files-found: error
+
+      - name: Attach installer to GitHub Release
+        if: github.event_name == 'release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload `
+            "${{ github.event.release.tag_name }}" `
+            release/*.exe `
+            --clobber

@@ -1,0 +1,62 @@
+name: deepspace-archive
+
+services:
+
+  backend:
+    image: ghcr.io/rockerchick082-ship-it/deepspace-archive-backend:edge
+
+    container_name: deepspace-archive-backend
+
+    restart: unless-stopped
+
+    environment:
+      NODE_ENV: production
+
+      # Inside Docker the media root is always /media.
+      MEDIA_LIBRARY_PATH: /media
+
+    volumes:
+      # Persistent application databases/settings.
+      - ${DSA_DATA_PATH:-./docker-data}:/app/data
+
+      # Regenerable thumbnails/cache.
+      - ${DSA_CACHE_PATH:-./docker-cache}:/app/cache
+
+      # Your actual archive.
+      - ${DSA_MEDIA_PATH:?Set DSA_MEDIA_PATH in .env.docker}:/media
+
+    ports:
+      - "${DSA_BACKEND_PORT:-3001}:3001"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+
+  frontend:
+    image: ghcr.io/rockerchick082-ship-it/deepspace-archive-frontend:edge
+
+    container_name: deepspace-archive-frontend
+
+    restart: unless-stopped
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    ports:
+      - "${DSA_WEB_PORT:-8080}:80"
+
+
+networks:
+  default:
+    name: deepspace-archive

@@ -1,0 +1,216 @@
+name: Publish Docker Images
+
+on:
+  workflow_dispatch:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  GHCR_REGISTRY: ghcr.io
+
+  GHCR_BACKEND_IMAGE: ghcr.io/rockerchick082-ship-it/deepspace-archive-backend
+  GHCR_FRONTEND_IMAGE: ghcr.io/rockerchick082-ship-it/deepspace-archive-frontend
+
+  DOCKERHUB_BACKEND_IMAGE: music8704/deepspace-archive-backend
+  DOCKERHUB_FRONTEND_IMAGE: music8704/deepspace-archive-frontend
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Add repository license to backend build context
+        shell: bash
+        run: |
+          cp LICENSE backend/LICENSE
+
+      - name: Determine release channels
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          add_tag() {
+            local file="$1"
+            local tag="$2"
+            printf '%s\n' "$tag" >> "$file"
+          }
+
+          ghcr_backend_file="$(mktemp)"
+          ghcr_frontend_file="$(mktemp)"
+          dockerhub_backend_file="$(mktemp)"
+          dockerhub_frontend_file="$(mktemp)"
+
+          build_date="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            raw_tag="${{ github.event.release.tag_name }}"
+            version="${raw_tag#v}"
+
+            add_tag "$ghcr_backend_file" "${GHCR_BACKEND_IMAGE}:${version}"
+            add_tag "$ghcr_frontend_file" "${GHCR_FRONTEND_IMAGE}:${version}"
+            add_tag "$dockerhub_backend_file" "${DOCKERHUB_BACKEND_IMAGE}:${version}"
+            add_tag "$dockerhub_frontend_file" "${DOCKERHUB_FRONTEND_IMAGE}:${version}"
+
+            if [[ "${{ github.event.release.prerelease }}" == "false" ]]; then
+              channel="stable"
+
+              if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+                major="${BASH_REMATCH[1]}"
+                minor="${BASH_REMATCH[2]}"
+
+                add_tag "$ghcr_backend_file" "${GHCR_BACKEND_IMAGE}:${major}.${minor}"
+                add_tag "$ghcr_backend_file" "${GHCR_BACKEND_IMAGE}:${major}"
+                add_tag "$ghcr_backend_file" "${GHCR_BACKEND_IMAGE}:latest"
+
+                add_tag "$ghcr_frontend_file" "${GHCR_FRONTEND_IMAGE}:${major}.${minor}"
+                add_tag "$ghcr_frontend_file" "${GHCR_FRONTEND_IMAGE}:${major}"
+                add_tag "$ghcr_frontend_file" "${GHCR_FRONTEND_IMAGE}:latest"
+
+                add_tag "$dockerhub_backend_file" "${DOCKERHUB_BACKEND_IMAGE}:${major}.${minor}"
+                add_tag "$dockerhub_backend_file" "${DOCKERHUB_BACKEND_IMAGE}:${major}"
+                add_tag "$dockerhub_backend_file" "${DOCKERHUB_BACKEND_IMAGE}:latest"
+
+                add_tag "$dockerhub_frontend_file" "${DOCKERHUB_FRONTEND_IMAGE}:${major}.${minor}"
+                add_tag "$dockerhub_frontend_file" "${DOCKERHUB_FRONTEND_IMAGE}:${major}"
+                add_tag "$dockerhub_frontend_file" "${DOCKERHUB_FRONTEND_IMAGE}:latest"
+              else
+                echo "::error::Stable release tag '${raw_tag}' must use vMAJOR.MINOR.PATCH, for example v1.0.0."
+                exit 1
+              fi
+            else
+              channel="prerelease"
+              echo "Pre-release detected. Only exact version tags will be published."
+            fi
+          else
+            version="edge"
+            channel="edge"
+
+            add_tag "$ghcr_backend_file" "${GHCR_BACKEND_IMAGE}:edge"
+            add_tag "$ghcr_frontend_file" "${GHCR_FRONTEND_IMAGE}:edge"
+            add_tag "$dockerhub_backend_file" "${DOCKERHUB_BACKEND_IMAGE}:edge"
+            add_tag "$dockerhub_frontend_file" "${DOCKERHUB_FRONTEND_IMAGE}:edge"
+          fi
+
+          {
+            echo "version=${version}"
+            echo "channel=${channel}"
+            echo "build_date=${build_date}"
+
+            echo "ghcr_backend<<EOF"
+            cat "$ghcr_backend_file"
+            echo "EOF"
+
+            echo "ghcr_frontend<<EOF"
+            cat "$ghcr_frontend_file"
+            echo "EOF"
+
+            echo "dockerhub_backend<<EOF"
+            cat "$dockerhub_backend_file"
+            echo "EOF"
+
+            echo "dockerhub_frontend<<EOF"
+            cat "$dockerhub_frontend_file"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Runtime version: ${version}"
+          echo "Runtime channel: ${channel}"
+          echo "Build date: ${build_date}"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Backend image metadata
+        id: backend-meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ env.GHCR_BACKEND_IMAGE }}
+            ${{ env.DOCKERHUB_BACKEND_IMAGE }}
+          labels: |
+            org.opencontainers.image.title=DeepSpace Archive Backend
+            org.opencontainers.image.description=Backend service for DeepSpace Archive
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.release.outputs.build_date }}
+            org.opencontainers.image.licenses=GPL-3.0
+
+      - name: Build and publish backend
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.release.outputs.ghcr_backend }}
+            ${{ steps.release.outputs.dockerhub_backend }}
+          labels: ${{ steps.backend-meta.outputs.labels }}
+          build-args: |
+            DEEPSPACE_ARCHIVE_VERSION=${{ steps.release.outputs.version }}
+            DEEPSPACE_ARCHIVE_CHANNEL=${{ steps.release.outputs.channel }}
+            DEEPSPACE_ARCHIVE_COMMIT=${{ github.sha }}
+            DEEPSPACE_ARCHIVE_BUILD_DATE=${{ steps.release.outputs.build_date }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+          provenance: true
+          sbom: true
+
+      - name: Frontend image metadata
+        id: frontend-meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ env.GHCR_FRONTEND_IMAGE }}
+            ${{ env.DOCKERHUB_FRONTEND_IMAGE }}
+          labels: |
+            org.opencontainers.image.title=DeepSpace Archive Frontend
+            org.opencontainers.image.description=Web frontend for DeepSpace Archive
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.release.outputs.build_date }}
+            org.opencontainers.image.licenses=GPL-3.0
+
+      - name: Build and publish frontend
+        uses: docker/build-push-action@v7
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.release.outputs.ghcr_frontend }}
+            ${{ steps.release.outputs.dockerhub_frontend }}
+          labels: ${{ steps.frontend-meta.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+          provenance: true
+          sbom: true

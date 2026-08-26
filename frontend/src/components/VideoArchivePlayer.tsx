@@ -1322,12 +1322,11 @@ useEffect(
     relativePath
 
 
-  const isMobileApp =
-    typeof window !==
-      'undefined' &&
-    Boolean(
-      window.DeepSpaceArchiveMobile
-    )
+ const isMobileApp =
+  typeof window !== 'undefined' &&
+  window.localStorage.getItem(
+    'deepspaceArchiveMobile'
+  ) === 'true'
 
 
   function downloadForOffline() {

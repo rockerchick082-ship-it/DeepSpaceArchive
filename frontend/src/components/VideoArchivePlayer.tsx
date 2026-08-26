@@ -27,6 +27,18 @@ import type {
 import PlaylistPicker from './PlaylistPicker'
 
 
+declare global {
+  interface Window {
+    DeepSpaceArchiveMobile?: {
+      isMobileApp: () => boolean
+      download: (
+        payloadJson: string
+      ) => void
+    }
+  }
+}
+
+
 type ArchiveResponse = {
   count: number
   items: ArchiveItem[]
@@ -1310,6 +1322,64 @@ useEffect(
     relativePath
 
 
+  const isMobileApp =
+    typeof window !==
+      'undefined' &&
+    Boolean(
+      window.DeepSpaceArchiveMobile
+    )
+
+
+  function downloadForOffline() {
+
+    if (
+      !isMobileApp ||
+      !window.DeepSpaceArchiveMobile
+    ) {
+      return
+    }
+
+
+    const fileName =
+      currentRelativePath
+        .split(/[\\/]/)
+        .pop() ??
+      currentItem.title
+
+
+    const query =
+      new URLSearchParams({
+        relativePath:
+          currentRelativePath,
+      })
+
+
+    const downloadUrl =
+      `${window.location.origin}/api/mobile/media/download?${query}`
+
+
+    window.DeepSpaceArchiveMobile.download(
+      JSON.stringify({
+        title:
+          currentItem.title,
+
+        character:
+          currentItem.character,
+
+        category:
+          categoryLabel,
+
+        relativePath:
+          currentRelativePath,
+
+        downloadUrl,
+
+        fileName,
+      })
+    )
+
+  }
+
 
   /*
    * =====================================
@@ -2531,6 +2601,21 @@ useEffect(
             : 'Off'}
 
         </button>
+
+
+        {isMobileApp && (
+
+          <button
+            type="button"
+            className="player-toggle"
+            onClick={
+              downloadForOffline
+            }
+          >
+            ↓ Download for Offline
+          </button>
+
+        )}
 
 
         <button

@@ -54,6 +54,7 @@ import * as galleryWikiRouteModule from './routes/galleryWikiRoutes'
 
 import * as pathSettingsRouteModule from './routes/pathSettingsRoutes'
 import * as setupRouteModule from './routes/setupRoutes'
+import mobileMediaRoutes from './routes/mobileMediaRoutes'
 
 import {
   initializePathSettings,
@@ -360,7 +361,10 @@ app.use(
   '/api/database-maintenance',
   databaseMaintenanceRoutes
 )
-
+app.use(
+  '/api/mobile/media',
+  mobileMediaRoutes
+)
 
 app.use(
   '/api/thumbnail-maintenance',

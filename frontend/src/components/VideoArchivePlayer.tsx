@@ -34,6 +34,22 @@ declare global {
       download: (
         payloadJson: string
       ) => void
+      getDownloads: () => string
+      isDownloaded: (
+        relativePath: string
+      ) => boolean
+      getLocalMediaPath: (
+        relativePath: string
+      ) => string
+      deleteDownload: (
+        relativePath: string
+      ) => boolean
+    }
+
+    Capacitor?: {
+      convertFileSrc: (
+        filePath: string
+      ) => string
     }
   }
 }
@@ -1322,11 +1338,54 @@ useEffect(
     relativePath
 
 
- const isMobileApp =
-  typeof window !== 'undefined' &&
-  window.localStorage.getItem(
-    'deepspaceArchiveMobile'
-  ) === 'true'
+  const isMobileApp =
+    typeof window !==
+      'undefined' &&
+    window.localStorage.getItem(
+      'deepspaceArchiveMobile'
+    ) ===
+      'true' &&
+    Boolean(
+      window.DeepSpaceArchiveMobile
+    )
+
+
+  const isDownloaded =
+    isMobileApp &&
+    Boolean(
+      window.DeepSpaceArchiveMobile
+        ?.isDownloaded(
+          currentRelativePath
+        )
+    )
+
+
+  const localMediaPath =
+    isDownloaded
+      ? (
+          window.DeepSpaceArchiveMobile
+            ?.getLocalMediaPath(
+              currentRelativePath
+            ) ??
+          ''
+        )
+      : ''
+
+
+  const localMediaUrl =
+    localMediaPath &&
+    window.Capacitor
+      ?.convertFileSrc
+      ? window.Capacitor.convertFileSrc(
+          localMediaPath
+        )
+      : ''
+
+
+  const usingLocalMedia =
+    Boolean(
+      localMediaUrl
+    )
 
 
   function downloadForOffline() {
@@ -1905,8 +1964,13 @@ useEffect(
     })
 
 
-  const mediaUrl =
+  const streamedMediaUrl =
     `/api/media?${mediaQuery}`
+
+
+  const mediaUrl =
+    localMediaUrl ||
+    streamedMediaUrl
 
 
   return (
@@ -2018,13 +2082,18 @@ useEffect(
 
         <strong>
 
-          {videoInfo?.resolutionLabel ??
-            'Detecting...'}
+          {usingLocalMedia
+            ? 'Offline Copy'
+            : (
+                videoInfo?.resolutionLabel ??
+                'Detecting...'
+              )}
 
         </strong>
 
 
-        {videoInfo?.width &&
+        {!usingLocalMedia &&
+          videoInfo?.width &&
           videoInfo?.height && (
 
           <span>
@@ -2604,15 +2673,29 @@ useEffect(
 
         {isMobileApp && (
 
-          <button
-            type="button"
-            className="player-toggle"
-            onClick={
-              downloadForOffline
-            }
-          >
-            ↓ Download for Offline
-          </button>
+          isDownloaded ? (
+
+            <button
+              type="button"
+              className="player-toggle active"
+              disabled
+            >
+              ✓ Available Offline
+            </button>
+
+          ) : (
+
+            <button
+              type="button"
+              className="player-toggle"
+              onClick={
+                downloadForOffline
+              }
+            >
+              ↓ Download for Offline
+            </button>
+
+          )
 
         )}
 

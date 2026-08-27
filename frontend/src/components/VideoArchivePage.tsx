@@ -142,6 +142,39 @@ type VideoArchivePageProps = {
 }
 
 
+type MobileDownloadRecord = {
+  relativePath?: string
+  status?: string
+}
+
+
+type MobileDownloadBridge = {
+  getDownloads?: () => string
+}
+
+
+function getMobileDownloadBridge() {
+
+  if (
+    typeof window ===
+      'undefined'
+  ) {
+
+    return undefined
+
+  }
+
+
+  return (
+    window as typeof window & {
+      DeepSpaceArchiveMobile?:
+        MobileDownloadBridge
+    }
+  ).DeepSpaceArchiveMobile
+
+}
+
+
 function archiveStateKey(
   category: string,
   relativePath: string
@@ -457,6 +490,83 @@ function VideoArchivePage({
     useState<string | null>(
       null
     )
+
+
+  const isMobileApp =
+    typeof window !==
+      'undefined' &&
+    window.localStorage.getItem(
+      'deepspaceArchiveMobile'
+    ) ===
+      'true'
+
+
+  const downloadedPaths =
+    (() => {
+
+      if (
+        !isMobileApp
+      ) {
+
+        return new Set<string>()
+
+      }
+
+
+      const bridge =
+        getMobileDownloadBridge()
+
+
+      if (
+        !bridge?.getDownloads
+      ) {
+
+        return new Set<string>()
+
+      }
+
+
+      try {
+
+        const rawDownloads =
+          bridge.getDownloads()
+
+
+        const downloads =
+          JSON.parse(
+            rawDownloads
+          ) as MobileDownloadRecord[]
+
+
+        return new Set<string>(
+          downloads
+            .filter(
+              (download) =>
+                download.status ===
+                  'downloaded' &&
+                Boolean(
+                  download.relativePath
+                )
+            )
+            .map(
+              (download) =>
+                download.relativePath as string
+            )
+        )
+
+      } catch (downloadError) {
+
+        console.error(
+          'Unable to read Android downloads:',
+          downloadError
+        )
+
+
+        return new Set<string>()
+
+      }
+
+    })()
 
 
   const fetchItems =
@@ -1347,6 +1457,14 @@ function VideoArchivePage({
                         savingFavoriteKey ===
                         key
                       }
+                      isMobileApp={
+                        isMobileApp
+                      }
+                      downloaded={
+                        downloadedPaths.has(
+                          item.relativePath
+                        )
+                      }
                       onOpen={() =>
                         openItem(
                           item
@@ -1448,6 +1566,8 @@ type VideoArchiveCardProps = {
   archiveState?: ArchiveStateSummary
   allowEditing: boolean
   favoriteSaving: boolean
+  isMobileApp: boolean
+  downloaded: boolean
   onOpen: () => void
   onEdit: () => void
   onToggleFavorite: () => void
@@ -1459,6 +1579,8 @@ function VideoArchiveCard({
   archiveState,
   allowEditing,
   favoriteSaving,
+  isMobileApp,
+  downloaded,
   onOpen,
   onEdit,
   onToggleFavorite,
@@ -1779,7 +1901,14 @@ function VideoArchiveCard({
 
   return (
 
-    <div className="memory-card-wrapper">
+    <div
+      className={
+        isMobileApp &&
+        !downloaded
+          ? 'memory-card-wrapper mobile-media-not-downloaded'
+          : 'memory-card-wrapper'
+      }
+    >
 
       <button
         type="button"
@@ -1893,6 +2022,24 @@ function VideoArchiveCard({
             <div className="memory-placeholder">
               ▶
             </div>
+
+          )}
+
+
+          {isMobileApp && downloaded && (
+
+            <span className="mobile-download-status downloaded">
+              ✓ Offline
+            </span>
+
+          )}
+
+
+          {isMobileApp && !downloaded && (
+
+            <span className="mobile-download-status unavailable">
+              Not Offline
+            </span>
 
           )}
 

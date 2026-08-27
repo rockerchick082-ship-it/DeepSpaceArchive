@@ -1352,7 +1352,14 @@ useEffect(
         0
 
 
-      void resetCompletedWatch()
+      if (
+        !video.paused &&
+        !video.ended
+      ) {
+
+        void resetCompletedWatch()
+
+      }
 
 
       return
@@ -1989,21 +1996,69 @@ useEffect(
 
   async function handleVideoEnded() {
 
-    /*
-     * Always save final playback state first.
-     *
-     * Reaching the end marks this viewing as completed,
-     * which is what increments the completed-play count.
-     */
+    if (
+      relativePath
+    ) {
+
+      try {
+
+        const resetResponse =
+          await fetch(
+            '/api/archive/restart',
+            {
+              method:
+                'POST',
+
+              headers: {
+                'Content-Type':
+                  'application/json',
+              },
+
+              body:
+                JSON.stringify({
+                  category:
+                    categoryLabel,
+
+                  relativePath,
+                }),
+            }
+          )
+
+
+        if (
+          resetResponse.ok
+        ) {
+
+          const resetState:
+            ArchiveState =
+            await resetResponse.json()
+
+
+          setArchiveState(
+            resetState
+          )
+
+        }
+
+      } catch (resetError) {
+
+        console.error(
+          'Unable to prepare completed play count:',
+          resetError
+        )
+
+      }
+
+    }
+
+
     await savePlaybackProgress()
 
 
-    /*
-     * Handle looping manually instead of using the native
-     * video loop attribute. That guarantees the ended event
-     * fires for every completed viewing, so each loop can be
-     * counted as a separate play.
-     */
+    restartHandledRef.current =
+      false
+
+
     if (
       loopVideo
     ) {
@@ -2060,6 +2115,10 @@ useEffect(
             state
           )
 
+
+          restartHandledRef.current =
+            true
+
         }
 
       } catch (restartError) {
@@ -2070,10 +2129,6 @@ useEffect(
         )
 
       }
-
-
-      restartHandledRef.current =
-        true
 
 
       pendingWatchedSecondsRef.current =
@@ -2120,12 +2175,6 @@ useEffect(
     }
 
 
-    /*
-     * =====================================
-     * PLAYLIST AUTO-ADVANCE
-     * =====================================
-     */
-
     if (
       playlistMode
     ) {
@@ -2146,12 +2195,6 @@ useEffect(
 
     }
 
-
-    /*
-     * =====================================
-     * NORMAL ARCHIVE AUTO-ADVANCE
-     * =====================================
-     */
 
     if (
       nextItem &&

@@ -290,6 +290,24 @@ function VideoArchivePlayer({
   const [loopVideo, setLoopVideo] =
     useState(false)
 
+
+  const [
+    mobileDownloaded,
+    setMobileDownloaded,
+  ] =
+    useState(
+      false
+    )
+
+
+  const [
+    mobileLocalPath,
+    setMobileLocalPath,
+  ] =
+    useState(
+      ''
+    )
+
   const [
     autoPlayNext,
     setAutoPlayNext,
@@ -340,6 +358,118 @@ useEffect(
       false
 
   }, [relativePath])
+
+
+  useEffect(
+    () => {
+
+      if (
+        !relativePath ||
+        typeof window ===
+          'undefined' ||
+        window.localStorage.getItem(
+          'deepspaceArchiveMobile'
+        ) !==
+          'true'
+      ) {
+
+        return
+
+      }
+
+
+      let cancelled =
+        false
+
+
+      function refreshLocalDownload() {
+
+        if (
+          cancelled ||
+          !relativePath ||
+          !window.DeepSpaceArchiveMobile
+        ) {
+
+          return
+
+        }
+
+
+        try {
+
+          const downloaded =
+            window.DeepSpaceArchiveMobile
+              .isDownloaded(
+                relativePath
+              )
+
+
+          const localPath =
+            downloaded
+              ? window.DeepSpaceArchiveMobile
+                  .getLocalMediaPath(
+                    relativePath
+                  )
+              : ''
+
+
+          setMobileDownloaded(
+            downloaded
+          )
+
+
+          setMobileLocalPath(
+            localPath
+          )
+
+        } catch (downloadError) {
+
+          console.error(
+            'Unable to read local download state:',
+            downloadError
+          )
+
+        }
+
+      }
+
+
+      const initialTimer =
+        window.setTimeout(
+          refreshLocalDownload,
+          0
+        )
+
+
+      const interval =
+        window.setInterval(
+          refreshLocalDownload,
+          1000
+        )
+
+
+      return () => {
+
+        cancelled =
+          true
+
+
+        window.clearTimeout(
+          initialTimer
+        )
+
+
+        window.clearInterval(
+          interval
+        )
+
+      }
+
+    },
+    [
+      relativePath,
+    ]
+  )
 
 
   useEffect(() => {
@@ -1350,34 +1480,13 @@ useEffect(
     )
 
 
-  const isDownloaded =
-    isMobileApp &&
-    Boolean(
-      window.DeepSpaceArchiveMobile
-        ?.isDownloaded(
-          currentRelativePath
-        )
-    )
-
-
-  const localMediaPath =
-    isDownloaded
-      ? (
-          window.DeepSpaceArchiveMobile
-            ?.getLocalMediaPath(
-              currentRelativePath
-            ) ??
-          ''
-        )
-      : ''
-
-
   const localMediaUrl =
-    localMediaPath &&
+    mobileDownloaded &&
+    mobileLocalPath &&
     window.Capacitor
       ?.convertFileSrc
       ? window.Capacitor.convertFileSrc(
-          localMediaPath
+          mobileLocalPath
         )
       : ''
 
@@ -2673,7 +2782,7 @@ useEffect(
 
         {isMobileApp && (
 
-          isDownloaded ? (
+          mobileDownloaded ? (
 
             <button
               type="button"

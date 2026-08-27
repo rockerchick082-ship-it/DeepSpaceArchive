@@ -501,72 +501,137 @@ function VideoArchivePage({
       'true'
 
 
-  const downloadedPaths =
-    (() => {
+  const [
+    downloadedPaths,
+    setDownloadedPaths,
+  ] =
+    useState<Set<string>>(
+      new Set()
+    )
+
+
+  useEffect(
+    () => {
 
       if (
         !isMobileApp
       ) {
 
-        return new Set<string>()
+        return
 
       }
 
 
-      const bridge =
-        getMobileDownloadBridge()
+      let cancelled =
+        false
 
 
-      if (
-        !bridge?.getDownloads
-      ) {
+      function refreshDownloads() {
 
-        return new Set<string>()
+        if (
+          cancelled
+        ) {
 
-      }
+          return
 
-
-      try {
-
-        const rawDownloads =
-          bridge.getDownloads()
+        }
 
 
-        const downloads =
-          JSON.parse(
-            rawDownloads
-          ) as MobileDownloadRecord[]
+        const bridge =
+          getMobileDownloadBridge()
 
 
-        return new Set<string>(
-          downloads
-            .filter(
-              (download) =>
-                download.status ===
-                  'downloaded' &&
-                Boolean(
-                  download.relativePath
+        if (
+          !bridge?.getDownloads
+        ) {
+
+          return
+
+        }
+
+
+        try {
+
+          const rawDownloads =
+            bridge.getDownloads()
+
+
+          const downloads =
+            JSON.parse(
+              rawDownloads
+            ) as MobileDownloadRecord[]
+
+
+          const nextPaths =
+            new Set<string>(
+              downloads
+                .filter(
+                  (download) =>
+                    download.status ===
+                      'downloaded' &&
+                    Boolean(
+                      download.relativePath
+                    )
+                )
+                .map(
+                  (download) =>
+                    download.relativePath as string
                 )
             )
-            .map(
-              (download) =>
-                download.relativePath as string
-            )
-        )
-
-      } catch (downloadError) {
-
-        console.error(
-          'Unable to read Android downloads:',
-          downloadError
-        )
 
 
-        return new Set<string>()
+          setDownloadedPaths(
+            nextPaths
+          )
+
+        } catch (downloadError) {
+
+          console.error(
+            'Unable to read Android downloads:',
+            downloadError
+          )
+
+        }
 
       }
 
-    })()
+
+      const initialTimer =
+        window.setTimeout(
+          refreshDownloads,
+          0
+        )
+
+
+      const interval =
+        window.setInterval(
+          refreshDownloads,
+          1000
+        )
+
+
+      return () => {
+
+        cancelled =
+          true
+
+
+        window.clearTimeout(
+          initialTimer
+        )
+
+
+        window.clearInterval(
+          interval
+        )
+
+      }
+
+    },
+    [
+      isMobileApp,
+    ]
+  )
 
 
   const fetchItems =

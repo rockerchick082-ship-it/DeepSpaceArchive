@@ -1991,19 +1991,120 @@ useEffect(
 
     /*
      * Always save final playback state first.
+     *
+     * Reaching the end marks this viewing as completed,
+     * which is what increments the completed-play count.
      */
-
     await savePlaybackProgress()
 
 
     /*
-     * Loop takes priority over
-     * Auto-Play Next.
+     * Handle looping manually instead of using the native
+     * video loop attribute. That guarantees the ended event
+     * fires for every completed viewing, so each loop can be
+     * counted as a separate play.
      */
-
     if (
       loopVideo
     ) {
+
+      const video =
+        videoRef.current
+
+
+      if (
+        !video ||
+        !relativePath
+      ) {
+
+        return
+
+      }
+
+
+      try {
+
+        const response =
+          await fetch(
+            '/api/archive/restart',
+            {
+              method:
+                'POST',
+
+              headers: {
+                'Content-Type':
+                  'application/json',
+              },
+
+              body:
+                JSON.stringify({
+                  category:
+                    categoryLabel,
+
+                  relativePath,
+                }),
+            }
+          )
+
+
+        if (
+          response.ok
+        ) {
+
+          const state:
+            ArchiveState =
+            await response.json()
+
+
+          setArchiveState(
+            state
+          )
+
+        }
+
+      } catch (restartError) {
+
+        console.error(
+          'Unable to start next loop play:',
+          restartError
+        )
+
+      }
+
+
+      restartHandledRef.current =
+        true
+
+
+      pendingWatchedSecondsRef.current =
+        0
+
+
+      lastTrackedTimeRef.current =
+        0
+
+
+      lastProgressSaveRef.current =
+        0
+
+
+      video.currentTime =
+        0
+
+
+      try {
+
+        await video.play()
+
+      } catch (playError) {
+
+        console.error(
+          'Unable to restart looping video:',
+          playError
+        )
+
+      }
+
 
       return
 
@@ -2230,7 +2331,6 @@ useEffect(
           autoPlay
           playsInline
           preload="auto"
-          loop={loopVideo}
           onLoadedMetadata={
             restoreProgress
           }

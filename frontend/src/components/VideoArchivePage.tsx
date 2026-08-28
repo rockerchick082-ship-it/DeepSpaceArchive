@@ -501,12 +501,9 @@ function VideoArchivePage({
 
 
   const isMobileApp =
-    typeof window !==
-      'undefined' &&
-    window.localStorage.getItem(
-      'deepspaceArchiveMobile'
-    ) ===
-      'true'
+    Boolean(
+      getMobileDownloadBridge()
+    )
 
 
   const [

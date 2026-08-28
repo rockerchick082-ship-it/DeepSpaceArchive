@@ -16,7 +16,11 @@ import {
 } from '../hooks/useArchiveNavigation'
 
 
-const itemsPerPage =
+const desktopItemsPerPage =
+  6
+
+
+const mobileItemsPerPage =
   3
 
 
@@ -30,6 +34,25 @@ function HomeNavigation() {
     enabledNavigation,
   } =
     useArchiveNavigation()
+
+
+  const isMobileApp =
+    typeof window !==
+      'undefined' &&
+    Boolean(
+      (
+        window as typeof window & {
+          DeepSpaceArchiveMobile?:
+            unknown
+        }
+      ).DeepSpaceArchiveMobile
+    )
+
+
+  const itemsPerPage =
+    isMobileApp
+      ? mobileItemsPerPage
+      : desktopItemsPerPage
 
 
   const [
@@ -148,6 +171,15 @@ function HomeNavigation() {
       TouchEvent<HTMLDivElement>
   ) {
 
+    if (
+      !isMobileApp
+    ) {
+
+      return
+
+    }
+
+
     touchStartXRef.current =
       event.touches[0]
         ?.clientX ??
@@ -160,6 +192,15 @@ function HomeNavigation() {
     event:
       TouchEvent<HTMLDivElement>
   ) {
+
+    if (
+      !isMobileApp
+    ) {
+
+      return
+
+    }
+
 
     const startX =
       touchStartXRef.current

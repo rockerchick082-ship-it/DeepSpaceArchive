@@ -76,9 +76,6 @@ import MainStoryPlayerPage from './pages/MainStoryPlayerPage'
 const mobileMarkerKey =
   'deepspaceArchiveMobile'
 
-const mobileOfflineCachePrefix =
-  'deepspace-archive-mobile-cache:'
-
 const mobileConnectionEvent =
   'deepspace-archive-connection'
 
@@ -86,39 +83,37 @@ const offlineCacheHeader =
   'X-DeepSpace-Archive-Offline-Cache'
 
 
-type MobileOfflineBridge = {
-  cacheApiResponse?: (
-    key: string,
-    payload: string
-  ) => void
-
-  getCachedApiResponse?: (
-    key: string
+type MobileNativeBridge = {
+  apiRequest?: (
+    requestJson: string
   ) => string
+
+  getServerUrl?: () => string
 }
 
 
-function getMobileOfflineBridge() {
-
-  return (
-    window as typeof window & {
-      DeepSpaceArchiveMobile?:
-        MobileOfflineBridge
-    }
-  ).DeepSpaceArchiveMobile
-
-}
-
-
-type MobileCachedResponse = {
-  body: string
+type NativeApiResult = {
+  status: number
   contentType: string
-  savedAt: number
+  body: string
+  connected: boolean
 }
 
 
 let mobileNasConnected =
   true
+
+
+function getMobileBridge() {
+
+  return (
+    window as typeof window & {
+      DeepSpaceArchiveMobile?:
+        MobileNativeBridge
+    }
+  ).DeepSpaceArchiveMobile
+
+}
 
 
 function isDeepSpaceMobile() {
@@ -133,42 +128,43 @@ function isDeepSpaceMobile() {
   }
 
 
-  const query =
-    new URLSearchParams(
-      window.location.search
+  const mobile =
+    Boolean(
+      getMobileBridge()
     )
-
-
-  const queryMobile =
-    query.get(
-      'dsaMobile'
-    ) ===
-      '1'
-
-
-  const storedMobile =
-    window.localStorage.getItem(
-      mobileMarkerKey
-    ) ===
-      'true'
 
 
   if (
-    queryMobile
+    mobile
   ) {
 
-    window.localStorage.setItem(
-      mobileMarkerKey,
-      'true'
-    )
+    try {
+
+      window.localStorage.setItem(
+        mobileMarkerKey,
+        'true'
+      )
+
+    } catch {
+      // Native bridge is still the source of truth.
+    }
+
+  } else {
+
+    try {
+
+      window.localStorage.removeItem(
+        mobileMarkerKey
+      )
+
+    } catch {
+      // Browser cleanup is best-effort only.
+    }
 
   }
 
 
-  return (
-    queryMobile ||
-    storedMobile
-  )
+  return mobile
 
 }
 
@@ -244,148 +240,122 @@ function getRequestMethod(
 }
 
 
-function mobileCacheKey(
-  url: URL
+async function requestHeadersObject(
+  input:
+    RequestInfo |
+    URL,
+  init?:
+    RequestInit
 ) {
 
-  return (
-    mobileOfflineCachePrefix +
-    encodeURIComponent(
-      url.pathname +
-      url.search
+  const headers =
+    new Headers(
+      input instanceof
+        Request
+        ? input.headers
+        : undefined
     )
+
+
+  if (
+    init?.headers
+  ) {
+
+    new Headers(
+      init.headers
+    ).forEach(
+      (
+        value,
+        key
+      ) => {
+
+        headers.set(
+          key,
+          value
+        )
+
+      }
+    )
+
+  }
+
+
+  const result:
+    Record<
+      string,
+      string
+    > = {}
+
+
+  headers.forEach(
+    (
+      value,
+      key
+    ) => {
+
+      result[
+        key
+      ] =
+        value
+
+    }
   )
 
-}
 
-
-function readMobileCache(
-  url: URL
-) {
-
-  const key =
-    url.pathname +
-    url.search
-
-
-  try {
-
-    const nativeValue =
-      getMobileOfflineBridge()
-        ?.getCachedApiResponse?.(
-          key
-        )
-
-
-    if (
-      nativeValue
-    ) {
-
-      return JSON.parse(
-        nativeValue
-      ) as MobileCachedResponse
-
-    }
-
-  } catch (error) {
-
-    console.error(
-      'Unable to read native mobile API cache:',
-      error
-    )
-
-  }
-
-
-  try {
-
-    const stored =
-      window.localStorage.getItem(
-        mobileCacheKey(
-          url
-        )
-      )
-
-
-    if (
-      !stored
-    ) {
-
-      return null
-
-    }
-
-
-    return JSON.parse(
-      stored
-    ) as MobileCachedResponse
-
-  } catch (error) {
-
-    console.error(
-      'Unable to read mobile API cache:',
-      error
-    )
-
-
-    return null
-
-  }
+  return result
 
 }
 
 
-function writeMobileCache(
-  url: URL,
-  value: MobileCachedResponse
+async function requestBodyText(
+  input:
+    RequestInfo |
+    URL,
+  init?:
+    RequestInit
 ) {
 
-  const serialized =
-    JSON.stringify(
-      value
-    )
+  if (
+    typeof init?.body ===
+      'string'
+  ) {
 
-
-  const key =
-    url.pathname +
-    url.search
-
-
-  try {
-
-    getMobileOfflineBridge()
-      ?.cacheApiResponse?.(
-        key,
-        serialized
-      )
-
-  } catch (error) {
-
-    console.error(
-      'Unable to update native mobile API cache:',
-      error
-    )
+    return init.body
 
   }
 
 
-  try {
+  if (
+    init?.body instanceof
+      URLSearchParams
+  ) {
 
-    window.localStorage.setItem(
-      mobileCacheKey(
-        url
-      ),
-      serialized
-    )
-
-  } catch (error) {
-
-    console.error(
-      'Unable to update browser mobile API cache:',
-      error
-    )
+    return init.body.toString()
 
   }
+
+
+  if (
+    input instanceof
+      Request
+  ) {
+
+    try {
+
+      return await input
+        .clone()
+        .text()
+
+    } catch {
+
+      return ''
+
+    }
+
+  }
+
+
+  return ''
 
 }
 
@@ -406,26 +376,6 @@ function initializeMobileRuntime() {
   document.documentElement.dataset
     .dsaMobile =
       'true'
-
-
-  const query =
-    new URLSearchParams(
-      window.location.search
-    )
-
-
-  mobileNasConnected =
-    query.get(
-      'dsaOffline'
-    ) !==
-      '1'
-
-
-  document.documentElement.dataset
-    .nasConnected =
-      mobileNasConnected
-        ? 'true'
-        : 'false'
 
 
   const mobileWindow =
@@ -474,29 +424,16 @@ function initializeMobileRuntime() {
         )
 
 
-      const method =
-        getRequestMethod(
-          input,
-          init
-        )
-
-
-      const sameOrigin =
+      const sameOriginApi =
         requestUrl.origin ===
-        window.location.origin
-
-
-      const cacheableApiRequest =
-        sameOrigin &&
-        method ===
-          'GET' &&
+          window.location.origin &&
         requestUrl.pathname.startsWith(
           '/api/'
         )
 
 
       if (
-        !cacheableApiRequest
+        !sameOriginApi
       ) {
 
         return originalFetch(
@@ -507,154 +444,125 @@ function initializeMobileRuntime() {
       }
 
 
-      try {
+      const method =
+        getRequestMethod(
+          input,
+          init
+        )
 
-        const networkResponse =
+
+      if (
+        method ===
+          'GET'
+      ) {
+
+        const response =
           await originalFetch(
             input,
             init
           )
 
 
-        const contentType =
-          networkResponse.headers.get(
-            'content-type'
-          ) ??
-          ''
-
-
-        const usableJsonResponse =
-          networkResponse.ok &&
-          contentType.includes(
-            'application/json'
-          )
-
-
-        if (
-          usableJsonResponse
-        ) {
-
-          const body =
-            await networkResponse
-              .clone()
-              .text()
-
-
-          writeMobileCache(
-            requestUrl,
-            {
-              body,
-              contentType,
-              savedAt:
-                Date.now(),
-            }
-          )
-
-
-          publishMobileConnection(
-            true
-          )
-
-
-          return networkResponse
-
-        }
-
-
-        const cached =
-          readMobileCache(
-            requestUrl
-          )
-
-
-        if (
-          cached
-        ) {
-
-          publishMobileConnection(
-            false
-          )
-
-
-          return new Response(
-            cached.body,
-            {
-              status:
-                200,
-
-              headers: {
-                'Content-Type':
-                  cached.contentType ||
-                  'application/json',
-
-                [offlineCacheHeader]:
-                  '1',
-              },
-            }
-          )
-
-        }
+        const offline =
+          response.headers.get(
+            offlineCacheHeader
+          ) ===
+            '1'
 
 
         publishMobileConnection(
-          networkResponse.ok
+          !offline &&
+          response.status !==
+            503
         )
 
 
-        return networkResponse
-
-      } catch (networkError) {
-
-        const cached =
-          readMobileCache(
-            requestUrl
-          )
-
-
-        if (
-          cached
-        ) {
-
-          publishMobileConnection(
-            false
-          )
-
-
-          return new Response(
-            cached.body,
-            {
-              status:
-                200,
-
-              headers: {
-                'Content-Type':
-                  cached.contentType ||
-                  'application/json',
-
-                [offlineCacheHeader]:
-                  '1',
-              },
-            }
-          )
-
-        }
-
-
-        publishMobileConnection(
-          false
-        )
-
-
-        throw networkError
+        return response
 
       }
 
+
+      const bridge =
+        getMobileBridge()
+
+
+      if (
+        !bridge?.apiRequest
+      ) {
+
+        return originalFetch(
+          input,
+          init
+        )
+
+      }
+
+
+      const headers =
+        await requestHeadersObject(
+          input,
+          init
+        )
+
+
+      const body =
+        await requestBodyText(
+          input,
+          init
+        )
+
+
+      const raw =
+        bridge.apiRequest(
+          JSON.stringify({
+            path:
+              requestUrl.pathname +
+              requestUrl.search,
+
+            method,
+
+            headers,
+
+            body,
+          })
+        )
+
+
+      const result =
+        JSON.parse(
+          raw
+        ) as NativeApiResult
+
+
+      publishMobileConnection(
+        Boolean(
+          result.connected
+        )
+      )
+
+
+      return new Response(
+        result.body ??
+        '',
+        {
+          status:
+            result.status ||
+            503,
+
+          headers: {
+            'Content-Type':
+              result.contentType ||
+              'application/json',
+          },
+        }
+      )
+
     }
 
+
   /*
-   * Warm the core mobile cache while the NAS is reachable so the
-   * primary archive pages can still render even if the user has
-   * not opened each one during this app session.
+   * Warm the persistent native GET cache while the NAS is reachable.
+   * This makes the core library available after a cold offline launch.
    */
   const warmupEndpoints = [
     '/api/setup/status',
@@ -1007,7 +915,16 @@ function App() {
 
   return (
 
-    <BrowserRouter>
+    <BrowserRouter
+      basename={
+        isDeepSpaceMobile() &&
+        window.location.pathname.startsWith(
+          '/archive'
+        )
+          ? '/archive'
+          : undefined
+      }
+    >
 
       <MobileConnectionStatus />
 

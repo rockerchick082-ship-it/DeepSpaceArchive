@@ -41,6 +41,9 @@ declare global {
       getLocalMediaPath: (
         relativePath: string
       ) => string
+      getLocalMediaUrl?: (
+        relativePath: string
+      ) => string
       deleteDownload: (
         relativePath: string
       ) => boolean
@@ -367,10 +370,7 @@ useEffect(
         !relativePath ||
         typeof window ===
           'undefined' ||
-        window.localStorage.getItem(
-          'deepspaceArchiveMobile'
-        ) !==
-          'true'
+        !window.DeepSpaceArchiveMobile
       ) {
 
         return
@@ -397,8 +397,12 @@ useEffect(
 
         try {
 
-          const downloaded =
+          const bridge =
             window.DeepSpaceArchiveMobile
+
+
+          const downloaded =
+            bridge
               .isDownloaded(
                 relativePath
               )
@@ -406,10 +410,16 @@ useEffect(
 
           const localPath =
             downloaded
-              ? window.DeepSpaceArchiveMobile
-                  .getLocalMediaPath(
-                    relativePath
-                  )
+              ? (
+                  bridge
+                    .getLocalMediaUrl?.(
+                      relativePath
+                    ) ||
+                  bridge
+                    .getLocalMediaPath(
+                      relativePath
+                    )
+                )
               : ''
 
 
@@ -1489,11 +1499,18 @@ useEffect(
 
   const localMediaUrl =
     mobileDownloaded &&
-    mobileLocalPath &&
-    window.Capacitor
-      ?.convertFileSrc
-      ? window.Capacitor.convertFileSrc(
-          mobileLocalPath
+    mobileLocalPath
+      ? (
+          /^https?:\/\//i.test(
+            mobileLocalPath
+          )
+            ? mobileLocalPath
+            : window.Capacitor
+                ?.convertFileSrc
+              ? window.Capacitor.convertFileSrc(
+                  mobileLocalPath
+                )
+              : ''
         )
       : ''
 

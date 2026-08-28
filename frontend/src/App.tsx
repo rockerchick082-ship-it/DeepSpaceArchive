@@ -86,6 +86,30 @@ const offlineCacheHeader =
   'X-DeepSpace-Archive-Offline-Cache'
 
 
+type MobileOfflineBridge = {
+  cacheApiResponse?: (
+    key: string,
+    payload: string
+  ) => void
+
+  getCachedApiResponse?: (
+    key: string
+  ) => string
+}
+
+
+function getMobileOfflineBridge() {
+
+  return (
+    window as typeof window & {
+      DeepSpaceArchiveMobile?:
+        MobileOfflineBridge
+    }
+  ).DeepSpaceArchiveMobile
+
+}
+
+
 type MobileCachedResponse = {
   body: string
   contentType: string
@@ -239,6 +263,40 @@ function readMobileCache(
   url: URL
 ) {
 
+  const key =
+    url.pathname +
+    url.search
+
+
+  try {
+
+    const nativeValue =
+      getMobileOfflineBridge()
+        ?.getCachedApiResponse?.(
+          key
+        )
+
+
+    if (
+      nativeValue
+    ) {
+
+      return JSON.parse(
+        nativeValue
+      ) as MobileCachedResponse
+
+    }
+
+  } catch (error) {
+
+    console.error(
+      'Unable to read native mobile API cache:',
+      error
+    )
+
+  }
+
+
   try {
 
     const stored =
@@ -282,26 +340,48 @@ function writeMobileCache(
   value: MobileCachedResponse
 ) {
 
+  const serialized =
+    JSON.stringify(
+      value
+    )
+
+
+  const key =
+    url.pathname +
+    url.search
+
+
+  try {
+
+    getMobileOfflineBridge()
+      ?.cacheApiResponse?.(
+        key,
+        serialized
+      )
+
+  } catch (error) {
+
+    console.error(
+      'Unable to update native mobile API cache:',
+      error
+    )
+
+  }
+
+
   try {
 
     window.localStorage.setItem(
       mobileCacheKey(
         url
       ),
-      JSON.stringify(
-        value
-      )
+      serialized
     )
 
   } catch (error) {
 
-    /*
-     * A full localStorage cache should never break the live archive.
-     * Existing cached pages remain usable even if a new response
-     * cannot be stored.
-     */
     console.error(
-      'Unable to update mobile API cache:',
+      'Unable to update browser mobile API cache:',
       error
     )
 
@@ -436,11 +516,6 @@ function initializeMobileRuntime() {
           )
 
 
-        publishMobileConnection(
-          true
-        )
-
-
         const contentType =
           networkResponse.headers.get(
             'content-type'
@@ -448,11 +523,15 @@ function initializeMobileRuntime() {
           ''
 
 
-        if (
+        const usableJsonResponse =
           networkResponse.ok &&
           contentType.includes(
             'application/json'
           )
+
+
+        if (
+          usableJsonResponse
         ) {
 
           const body =
@@ -471,7 +550,55 @@ function initializeMobileRuntime() {
             }
           )
 
+
+          publishMobileConnection(
+            true
+          )
+
+
+          return networkResponse
+
         }
+
+
+        const cached =
+          readMobileCache(
+            requestUrl
+          )
+
+
+        if (
+          cached
+        ) {
+
+          publishMobileConnection(
+            false
+          )
+
+
+          return new Response(
+            cached.body,
+            {
+              status:
+                200,
+
+              headers: {
+                'Content-Type':
+                  cached.contentType ||
+                  'application/json',
+
+                [offlineCacheHeader]:
+                  '1',
+              },
+            }
+          )
+
+        }
+
+
+        publishMobileConnection(
+          networkResponse.ok
+        )
 
 
         return networkResponse

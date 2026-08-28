@@ -1,5 +1,10 @@
 import {
+  useRef,
   useState,
+} from 'react'
+
+import type {
+  TouchEvent,
 } from 'react'
 
 import {
@@ -12,14 +17,8 @@ import {
 
 
 const itemsPerPage =
-  6
+  3
 
-
-/*
- * These buttons are visible so we can
- * design the navigation now, but they
- * won't navigate until their pages exist.
- */
 
 const unfinishedSections =
   new Set()
@@ -42,6 +41,12 @@ function HomeNavigation() {
     )
 
 
+  const touchStartXRef =
+    useRef<number | null>(
+      null
+    )
+
+
   const totalPages =
     Math.max(
       1,
@@ -51,17 +56,6 @@ function HomeNavigation() {
       )
     )
 
-
-  /*
-   * =====================================
-   * SAFE CURRENT PAGE
-   * =====================================
-   *
-   * If navigation settings change and the
-   * current page no longer exists, render
-   * the last valid page instead of using
-   * an effect to force page state.
-   */
 
   const safePage =
     Math.min(
@@ -149,9 +143,107 @@ function HomeNavigation() {
   }
 
 
+  function handleTouchStart(
+    event:
+      TouchEvent<HTMLDivElement>
+  ) {
+
+    touchStartXRef.current =
+      event.touches[0]
+        ?.clientX ??
+      null
+
+  }
+
+
+  function handleTouchEnd(
+    event:
+      TouchEvent<HTMLDivElement>
+  ) {
+
+    const startX =
+      touchStartXRef.current
+
+
+    touchStartXRef.current =
+      null
+
+
+    if (
+      startX ===
+      null
+    ) {
+
+      return
+
+    }
+
+
+    const endX =
+      event.changedTouches[0]
+        ?.clientX
+
+
+    if (
+      endX ===
+      undefined
+    ) {
+
+      return
+
+    }
+
+
+    const delta =
+      endX -
+      startX
+
+
+    if (
+      Math.abs(
+        delta
+      ) <
+      45
+    ) {
+
+      return
+
+    }
+
+
+    if (
+      delta <
+      0
+    ) {
+
+      nextPage()
+
+    } else {
+
+      previousPage()
+
+    }
+
+  }
+
+
   return (
 
-    <div className="home-navigation-carousel">
+    <div
+      className="home-navigation-carousel"
+      onTouchStart={
+        handleTouchStart
+      }
+      onTouchEnd={
+        handleTouchEnd
+      }
+      onTouchCancel={() => {
+
+        touchStartXRef.current =
+          null
+
+      }}
+    >
 
       {totalPages > 1 && (
 

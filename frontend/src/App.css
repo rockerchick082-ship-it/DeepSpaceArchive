@@ -29488,3 +29488,261 @@ html[data-dsa-mobile="true"]
 
 }
 
+
+
+/* ========================================
+   ANDROID MOBILE APP — HOME V2
+======================================== */
+
+html[data-dsa-mobile="true"]
+.home-page
+.background-video-main {
+  width:
+    100%;
+
+  height:
+    100%;
+
+  max-width:
+    100%;
+
+  object-fit:
+    contain;
+
+  object-position:
+    center;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-media-main-stack {
+  position:
+    absolute;
+
+  inset:
+    0;
+
+  z-index:
+    1;
+
+  overflow:
+    hidden;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-media-layer {
+  position:
+    absolute;
+
+  inset:
+    0;
+
+  z-index:
+    1;
+
+  width:
+    100%;
+
+  height:
+    100%;
+
+  opacity:
+    0;
+
+  visibility:
+    hidden;
+
+  pointer-events:
+    none;
+
+  transition:
+    opacity
+    180ms
+    ease;
+
+  background:
+    transparent;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-media-layer.active {
+  z-index:
+    2;
+
+  opacity:
+    1;
+
+  visibility:
+    visible;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-page
+.background-video-blur {
+  z-index:
+    0;
+
+  object-fit:
+    cover;
+
+  object-position:
+    center;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-navigation {
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(
+        0,
+        1fr
+      )
+    );
+
+  grid-template-rows:
+    1fr;
+
+  gap:
+    7px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-navigation-card {
+  min-height:
+    62px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-utility-navigation {
+  display:
+    grid;
+
+  grid-auto-flow:
+    column;
+
+  grid-auto-columns:
+    calc(
+      (
+        100% -
+        7px
+      ) /
+      2
+    );
+
+  grid-template-columns:
+    none;
+
+  justify-content:
+    start;
+
+  gap:
+    7px;
+
+  overflow-x:
+    auto;
+
+  overflow-y:
+    hidden;
+
+  padding-bottom:
+    2px;
+
+  scroll-snap-type:
+    x
+    mandatory;
+
+  scrollbar-width:
+    none;
+
+  -webkit-overflow-scrolling:
+    touch;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-utility-navigation::-webkit-scrollbar {
+  display:
+    none;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-utility-link {
+  width:
+    auto;
+
+  min-height:
+    42px;
+
+  box-sizing:
+    border-box;
+
+  scroll-snap-align:
+    start;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-sound-toggle {
+  width:
+    28px;
+
+  height:
+    28px;
+
+  min-width:
+    28px;
+
+  min-height:
+    28px;
+
+  padding:
+    0;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-sound-icon {
+  font-size:
+    0.72rem;
+
+  transform:
+    scale(
+      0.84
+    );
+}
+
+
+html[data-dsa-mobile="true"]
+.home-media-dots {
+  min-height:
+    28px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-media-control-row {
+  gap:
+    8px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-navigation-carousel {
+  touch-action:
+    pan-y;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-media-main-stack video {
+  background:
+    transparent;
+}

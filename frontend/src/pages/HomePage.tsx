@@ -384,6 +384,16 @@ function HomePage() {
     )
 
 
+  const homeVideoRefs =
+    useRef<
+      Record<
+        string,
+        HTMLVideoElement |
+        null
+      >
+    >({})
+
+
   const isMobileApp =
     typeof window !==
       'undefined' &&
@@ -1031,6 +1041,121 @@ function HomePage() {
     null
 
 
+  function resolvedHomeMediaUrl(
+    homeItem: HomeMediaItem
+  ) {
+
+    return (
+      localMediaUrls[
+        homeItem.relativePath
+      ] ??
+      (
+        nasConnected
+          ? homeMediaUrl(
+              homeItem
+            )
+          : null
+      )
+    )
+
+  }
+
+
+  useEffect(
+    () => {
+
+      for (
+        const [
+          relativePath,
+          video,
+        ]
+        of Object.entries(
+          homeVideoRefs.current
+        )
+      ) {
+
+        if (
+          !video
+        ) {
+
+          continue
+
+        }
+
+
+        if (
+          relativePath ===
+          currentMediaPath
+        ) {
+
+          if (
+            video.ended
+          ) {
+
+            video.currentTime =
+              0
+
+          }
+
+
+          void video
+            .play()
+            .catch(
+              () => {}
+            )
+
+        } else {
+
+          video.pause()
+
+        }
+
+      }
+
+    },
+    [
+      currentMediaPath,
+    ]
+  )
+
+
+  useEffect(
+    () => {
+
+      for (
+        const [
+          relativePath,
+          video,
+        ]
+        of Object.entries(
+          homeVideoRefs.current
+        )
+      ) {
+
+        if (
+          !video
+        ) {
+
+          continue
+
+        }
+
+
+        video.muted =
+          relativePath !==
+            currentMediaPath ||
+          !soundEnabled
+
+      }
+
+    },
+    [
+      currentMediaPath,
+      soundEnabled,
+    ]
+  )
+
+
   /*
    * =====================================
    * AUTOMATIC HOME CAROUSEL
@@ -1157,101 +1282,174 @@ function HomePage() {
       <div className="video-stage">
 
         {currentMedia &&
-        currentMediaUrl ? (
+        currentMediaUrl && (
 
           currentMedia.mediaType ===
             'video' ? (
 
-            <>
-
-              <video
-                className="background-video-blur"
-                src={
-                  currentMediaUrl
-                }
-                autoPlay
-                loop
-                muted
-                playsInline
-                key={
-                  `blur-${currentMedia.relativePath}`
-                }
-              />
-
-
-              <video
-                className="background-video-main"
-                src={
-                  currentMediaUrl
-                }
-                autoPlay
-                loop={
-                  mediaItems.length <=
-                  1
-                }
-                muted={
-                  !soundEnabled
-                }
-                playsInline
-                onEnded={
-                  advanceMedia
-                }
-                key={
-                  `main-${currentMedia.relativePath}`
-                }
-              />
-
-            </>
+            <video
+              className="background-video-blur"
+              src={
+                currentMediaUrl
+              }
+              autoPlay
+              loop
+              muted
+              playsInline
+              preload="auto"
+              aria-hidden="true"
+            />
 
           ) : (
 
-            <>
-
-              <img
-                className="background-video-blur"
-                src={
-                  currentMediaUrl
-                }
-                alt=""
-                aria-hidden="true"
-                key={
-                  `blur-${currentMedia.relativePath}`
-                }
-              />
-
-
-              <img
-                className="background-video-main"
-                src={
-                  currentMediaUrl
-                }
-                alt={
-                  `${selectedCharacter} Home artwork`
-                }
-                key={
-                  `main-${currentMedia.relativePath}`
-                }
-              />
-
-            </>
+            <img
+              className="background-video-blur"
+              src={
+                currentMediaUrl
+              }
+              alt=""
+              aria-hidden="true"
+            />
 
           )
 
-        ) : (
+        )}
+
+
+        <div className="home-media-main-stack">
+
+          {mediaItems.map(
+            (
+              homeItem,
+              index
+            ) => {
+
+              const mediaUrl =
+                resolvedHomeMediaUrl(
+                  homeItem
+                )
+
+
+              if (
+                !mediaUrl
+              ) {
+
+                return null
+
+              }
+
+
+              const active =
+                index ===
+                mediaIndex
+
+
+              if (
+                homeItem.mediaType ===
+                'video'
+              ) {
+
+                return (
+
+                  <video
+                    key={
+                      homeItem.relativePath
+                    }
+                    ref={(node) => {
+
+                      homeVideoRefs.current[
+                        homeItem.relativePath
+                      ] =
+                        node
+
+                    }}
+                    className={
+                      active
+                        ? 'background-video-main home-media-layer active'
+                        : 'background-video-main home-media-layer'
+                    }
+                    src={
+                      mediaUrl
+                    }
+                    autoPlay={
+                      active
+                    }
+                    loop={
+                      mediaItems.length <=
+                      1
+                    }
+                    muted={
+                      !active ||
+                      !soundEnabled
+                    }
+                    playsInline
+                    preload="auto"
+                    onEnded={() => {
+
+                      if (
+                        active
+                      ) {
+
+                        advanceMedia()
+
+                      }
+
+                    }}
+                  />
+
+                )
+
+              }
+
+
+              return (
+
+                <img
+                  key={
+                    homeItem.relativePath
+                  }
+                  className={
+                    active
+                      ? 'background-video-main home-media-layer active'
+                      : 'background-video-main home-media-layer'
+                  }
+                  src={
+                    mediaUrl
+                  }
+                  alt={
+                    active
+                      ? `${selectedCharacter} Home artwork`
+                      : ''
+                  }
+                  aria-hidden={
+                    active
+                      ? undefined
+                      : 'true'
+                  }
+                />
+
+              )
+
+            }
+          )}
+
+        </div>
+
+
+        {!currentMediaUrl && (
 
           <div className="home-media-message">
 
             {loadingMedia
               ? 'Loading Home media…'
               : mediaError ||
-                `No Home media found for ${selectedCharacter}.`}
+                `No offline Home media is available for ${selectedCharacter}.`}
 
           </div>
 
         )}
 
       </div>
-
 
       <div className="video-overlay" />
 

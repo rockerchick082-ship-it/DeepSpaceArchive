@@ -72,6 +72,610 @@ import MainStoryChapterPage from './pages/MainStoryChapterPage'
 import MainStoryPlayerPage from './pages/MainStoryPlayerPage'
 
 
+
+const mobileMarkerKey =
+  'deepspaceArchiveMobile'
+
+const mobileOfflineCachePrefix =
+  'deepspace-archive-mobile-cache:'
+
+const mobileConnectionEvent =
+  'deepspace-archive-connection'
+
+const offlineCacheHeader =
+  'X-DeepSpace-Archive-Offline-Cache'
+
+
+type MobileCachedResponse = {
+  body: string
+  contentType: string
+  savedAt: number
+}
+
+
+let mobileNasConnected =
+  true
+
+
+function isDeepSpaceMobile() {
+
+  if (
+    typeof window ===
+      'undefined'
+  ) {
+
+    return false
+
+  }
+
+
+  const query =
+    new URLSearchParams(
+      window.location.search
+    )
+
+
+  const queryMobile =
+    query.get(
+      'dsaMobile'
+    ) ===
+      '1'
+
+
+  const storedMobile =
+    window.localStorage.getItem(
+      mobileMarkerKey
+    ) ===
+      'true'
+
+
+  if (
+    queryMobile
+  ) {
+
+    window.localStorage.setItem(
+      mobileMarkerKey,
+      'true'
+    )
+
+  }
+
+
+  return (
+    queryMobile ||
+    storedMobile
+  )
+
+}
+
+
+function publishMobileConnection(
+  connected: boolean
+) {
+
+  mobileNasConnected =
+    connected
+
+
+  document.documentElement.dataset
+    .nasConnected =
+      connected
+        ? 'true'
+        : 'false'
+
+
+  window.dispatchEvent(
+    new CustomEvent(
+      mobileConnectionEvent,
+      {
+        detail: {
+          connected,
+        },
+      }
+    )
+  )
+
+}
+
+
+function getRequestUrl(
+  input:
+    RequestInfo |
+    URL
+) {
+
+  if (
+    input instanceof
+      Request
+  ) {
+
+    return input.url
+
+  }
+
+
+  return input.toString()
+
+}
+
+
+function getRequestMethod(
+  input:
+    RequestInfo |
+    URL,
+  init?:
+    RequestInit
+) {
+
+  return (
+    init?.method ??
+    (
+      input instanceof
+        Request
+        ? input.method
+        : 'GET'
+    )
+  ).toUpperCase()
+
+}
+
+
+function mobileCacheKey(
+  url: URL
+) {
+
+  return (
+    mobileOfflineCachePrefix +
+    encodeURIComponent(
+      url.pathname +
+      url.search
+    )
+  )
+
+}
+
+
+function readMobileCache(
+  url: URL
+) {
+
+  try {
+
+    const stored =
+      window.localStorage.getItem(
+        mobileCacheKey(
+          url
+        )
+      )
+
+
+    if (
+      !stored
+    ) {
+
+      return null
+
+    }
+
+
+    return JSON.parse(
+      stored
+    ) as MobileCachedResponse
+
+  } catch (error) {
+
+    console.error(
+      'Unable to read mobile API cache:',
+      error
+    )
+
+
+    return null
+
+  }
+
+}
+
+
+function writeMobileCache(
+  url: URL,
+  value: MobileCachedResponse
+) {
+
+  try {
+
+    window.localStorage.setItem(
+      mobileCacheKey(
+        url
+      ),
+      JSON.stringify(
+        value
+      )
+    )
+
+  } catch (error) {
+
+    /*
+     * A full localStorage cache should never break the live archive.
+     * Existing cached pages remain usable even if a new response
+     * cannot be stored.
+     */
+    console.error(
+      'Unable to update mobile API cache:',
+      error
+    )
+
+  }
+
+}
+
+
+function initializeMobileRuntime() {
+
+  if (
+    typeof window ===
+      'undefined' ||
+    !isDeepSpaceMobile()
+  ) {
+
+    return
+
+  }
+
+
+  document.documentElement.dataset
+    .dsaMobile =
+      'true'
+
+
+  const query =
+    new URLSearchParams(
+      window.location.search
+    )
+
+
+  mobileNasConnected =
+    query.get(
+      'dsaOffline'
+    ) !==
+      '1'
+
+
+  document.documentElement.dataset
+    .nasConnected =
+      mobileNasConnected
+        ? 'true'
+        : 'false'
+
+
+  const mobileWindow =
+    window as typeof window & {
+      __deepSpaceArchiveMobileFetchInstalled?:
+        boolean
+    }
+
+
+  if (
+    mobileWindow
+      .__deepSpaceArchiveMobileFetchInstalled
+  ) {
+
+    return
+
+  }
+
+
+  mobileWindow
+    .__deepSpaceArchiveMobileFetchInstalled =
+      true
+
+
+  const originalFetch =
+    window.fetch.bind(
+      window
+    )
+
+
+  window.fetch =
+    async (
+      input:
+        RequestInfo |
+        URL,
+      init?:
+        RequestInit
+    ) => {
+
+      const requestUrl =
+        new URL(
+          getRequestUrl(
+            input
+          ),
+          window.location.href
+        )
+
+
+      const method =
+        getRequestMethod(
+          input,
+          init
+        )
+
+
+      const sameOrigin =
+        requestUrl.origin ===
+        window.location.origin
+
+
+      const cacheableApiRequest =
+        sameOrigin &&
+        method ===
+          'GET' &&
+        requestUrl.pathname.startsWith(
+          '/api/'
+        )
+
+
+      if (
+        !cacheableApiRequest
+      ) {
+
+        return originalFetch(
+          input,
+          init
+        )
+
+      }
+
+
+      try {
+
+        const networkResponse =
+          await originalFetch(
+            input,
+            init
+          )
+
+
+        publishMobileConnection(
+          true
+        )
+
+
+        const contentType =
+          networkResponse.headers.get(
+            'content-type'
+          ) ??
+          ''
+
+
+        if (
+          networkResponse.ok &&
+          contentType.includes(
+            'application/json'
+          )
+        ) {
+
+          const body =
+            await networkResponse
+              .clone()
+              .text()
+
+
+          writeMobileCache(
+            requestUrl,
+            {
+              body,
+              contentType,
+              savedAt:
+                Date.now(),
+            }
+          )
+
+        }
+
+
+        return networkResponse
+
+      } catch (networkError) {
+
+        const cached =
+          readMobileCache(
+            requestUrl
+          )
+
+
+        if (
+          cached
+        ) {
+
+          publishMobileConnection(
+            false
+          )
+
+
+          return new Response(
+            cached.body,
+            {
+              status:
+                200,
+
+              headers: {
+                'Content-Type':
+                  cached.contentType ||
+                  'application/json',
+
+                [offlineCacheHeader]:
+                  '1',
+              },
+            }
+          )
+
+        }
+
+
+        publishMobileConnection(
+          false
+        )
+
+
+        throw networkError
+
+      }
+
+    }
+
+  /*
+   * Warm the core mobile cache while the NAS is reachable so the
+   * primary archive pages can still render even if the user has
+   * not opened each one during this app session.
+   */
+  const warmupEndpoints = [
+    '/api/setup/status',
+    '/api/archive/states',
+    '/api/archive/stats',
+    '/api/playlists',
+    '/api/library/memoria',
+    '/api/library/secret-times',
+    '/api/library/myths',
+    '/api/library/bond',
+    '/api/library/tender-moments',
+    '/api/library/phone-calls',
+    '/api/library/phone-videos',
+    '/api/library/illusio',
+    '/api/library/main-story',
+  ]
+
+
+  window.setTimeout(
+    () => {
+
+      void Promise.allSettled(
+        warmupEndpoints.map(
+          (endpoint) =>
+            window.fetch(
+              endpoint
+            )
+        )
+      )
+
+    },
+    900
+  )
+
+}
+
+
+initializeMobileRuntime()
+
+
+function MobileConnectionStatus() {
+
+  const [
+    connected,
+    setConnected,
+  ] =
+    useState(
+      mobileNasConnected
+    )
+
+
+  const mobile =
+    isDeepSpaceMobile()
+
+
+  useEffect(
+    () => {
+
+      if (
+        !mobile
+      ) {
+
+        return
+
+      }
+
+
+      function handleConnection(
+        event: Event
+      ) {
+
+        const detail =
+          (
+            event as
+              CustomEvent<{
+                connected:
+                  boolean
+              }>
+          ).detail
+
+
+        setConnected(
+          Boolean(
+            detail?.connected
+          )
+        )
+
+      }
+
+
+      window.addEventListener(
+        mobileConnectionEvent,
+        handleConnection
+      )
+
+
+      return () => {
+
+        window.removeEventListener(
+          mobileConnectionEvent,
+          handleConnection
+        )
+
+      }
+
+    },
+    [
+      mobile,
+    ]
+  )
+
+
+  if (
+    !mobile
+  ) {
+
+    return null
+
+  }
+
+
+  return (
+
+    <div
+      className={
+        connected
+          ? 'mobile-nas-status connected'
+          : 'mobile-nas-status offline'
+      }
+      role="status"
+    >
+
+      <span
+        aria-hidden="true"
+      />
+
+
+      {connected
+        ? 'NAS Connected'
+        : 'Offline Mode'}
+
+    </div>
+
+  )
+
+}
+
+
 type SetupGateStatus = {
   setupRequired: boolean
 }
@@ -277,6 +881,9 @@ function App() {
   return (
 
     <BrowserRouter>
+
+      <MobileConnectionStatus />
+
 
       <SetupGate>
 

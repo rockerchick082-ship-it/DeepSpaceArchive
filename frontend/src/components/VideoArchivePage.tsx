@@ -476,6 +476,14 @@ function VideoArchivePage({
     )
 
   const [
+    nasConnected,
+    setNasConnected,
+  ] =
+    useState(
+      true
+    )
+
+  const [
     editingItem,
     setEditingItem,
   ] =
@@ -655,12 +663,24 @@ function VideoArchivePage({
         }
 
 
+        const fromOfflineCache =
+          response.headers.get(
+            'X-DeepSpace-Archive-Offline-Cache'
+          ) ===
+            '1'
+
+
         const data:
           ArchiveResponse =
           await response.json()
 
 
-        return data.items
+        return {
+          items:
+            data.items,
+
+          fromOfflineCache,
+        }
 
       },
       [
@@ -686,7 +706,11 @@ function VideoArchivePage({
 
 
           setItems(
-            loadedItems
+            loadedItems.items
+          )
+
+          setNasConnected(
+            !loadedItems.fromOfflineCache
           )
 
           setError(
@@ -697,6 +721,11 @@ function VideoArchivePage({
 
           console.error(
             err
+          )
+
+
+          setNasConnected(
+            false
           )
 
 
@@ -792,7 +821,12 @@ function VideoArchivePage({
         ) {
 
           setItems(
-            itemResult.value
+            itemResult.value.items
+          )
+
+          setNasConnected(
+            !itemResult.value
+              .fromOfflineCache
           )
 
           setError(
@@ -803,6 +837,10 @@ function VideoArchivePage({
 
           console.error(
             itemResult.reason
+          )
+
+          setNasConnected(
+            false
           )
 
           setError(
@@ -1525,6 +1563,9 @@ function VideoArchivePage({
                       isMobileApp={
                         isMobileApp
                       }
+                      nasConnected={
+                        nasConnected
+                      }
                       downloaded={
                         downloadedPaths.has(
                           item.relativePath
@@ -1632,6 +1673,7 @@ type VideoArchiveCardProps = {
   allowEditing: boolean
   favoriteSaving: boolean
   isMobileApp: boolean
+  nasConnected: boolean
   downloaded: boolean
   onOpen: () => void
   onEdit: () => void
@@ -1645,6 +1687,7 @@ function VideoArchiveCard({
   allowEditing,
   favoriteSaving,
   isMobileApp,
+  nasConnected,
   downloaded,
   onOpen,
   onEdit,
@@ -1969,6 +2012,7 @@ function VideoArchiveCard({
     <div
       className={
         isMobileApp &&
+        !nasConnected &&
         !downloaded
           ? 'memory-card-wrapper mobile-media-not-downloaded'
           : 'memory-card-wrapper'
@@ -1978,6 +2022,16 @@ function VideoArchiveCard({
       <button
         type="button"
         className="memory-card"
+        disabled={
+          isMobileApp &&
+          !nasConnected &&
+          !downloaded
+        }
+        aria-disabled={
+          isMobileApp &&
+          !nasConnected &&
+          !downloaded
+        }
         onClick={
           onOpen
         }
@@ -2100,7 +2154,9 @@ function VideoArchiveCard({
           )}
 
 
-          {isMobileApp && !downloaded && (
+          {isMobileApp &&
+            !nasConnected &&
+            !downloaded && (
 
             <span className="mobile-download-status unavailable">
               Not Offline

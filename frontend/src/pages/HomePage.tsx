@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
 } from 'react'
 
@@ -129,6 +130,169 @@ function homeMediaUrl(
 }
 
 
+
+
+type MobileDownloadRecord = {
+  relativePath?: string
+  status?: string
+}
+
+
+type MobileHomeBridge = {
+  getDownloads?: () => string
+
+  isDownloaded?: (
+    relativePath: string
+  ) => boolean
+
+  getLocalMediaPath?: (
+    relativePath: string
+  ) => string
+
+  download?: (
+    payloadJson: string
+  ) => void
+
+  downloadSystemMedia?: (
+    payloadJson: string
+  ) => void
+}
+
+
+type CapacitorFileBridge = {
+  convertFileSrc?: (
+    filePath: string
+  ) => string
+}
+
+
+function getMobileHomeBridge() {
+
+  return (
+    window as typeof window & {
+      DeepSpaceArchiveMobile?:
+        MobileHomeBridge
+    }
+  ).DeepSpaceArchiveMobile
+
+}
+
+
+function getCapacitorFileBridge() {
+
+  return (
+    window as typeof window & {
+      Capacitor?:
+        CapacitorFileBridge
+    }
+  ).Capacitor
+
+}
+
+
+function safeHomeFileName(
+  character: string,
+  item: HomeMediaItem
+) {
+
+  const sourceName =
+    item.fileName ||
+    item.relativePath
+      .split(
+        /[\\/]/
+      )
+      .pop() ||
+    'home-media'
+
+
+  return (
+    `home-${character}-${sourceName}`
+  ).replace(
+    /[^a-zA-Z0-9._-]+/g,
+    '_'
+  )
+
+}
+
+
+function queueHomeMediaDownload(
+  character: string,
+  item: HomeMediaItem,
+  bridge: MobileHomeBridge,
+  requested:
+    Set<string>
+) {
+
+  if (
+    requested.has(
+      item.relativePath
+    )
+  ) {
+
+    return
+
+  }
+
+
+  const query =
+    new URLSearchParams({
+      relativePath:
+        item.relativePath,
+    })
+
+
+  const downloadUrl =
+    `${window.location.origin}/api/mobile/media/download?${query}`
+
+
+  const payload =
+    JSON.stringify({
+      title:
+        `${character} Home Background`,
+
+      character,
+
+      category:
+        'Home Background',
+
+      relativePath:
+        item.relativePath,
+
+      downloadUrl,
+
+      fileName:
+        safeHomeFileName(
+          character,
+          item
+        ),
+    })
+
+
+  requested.add(
+    item.relativePath
+  )
+
+
+  if (
+    bridge.downloadSystemMedia
+  ) {
+
+    bridge.downloadSystemMedia(
+      payload
+    )
+
+    return
+
+  }
+
+
+  bridge.download?.(
+    payload
+  )
+
+}
+
+
 function HomePage() {
 
   const [
@@ -183,6 +347,50 @@ function HomePage() {
     useState(
       ''
     )
+
+
+  const [
+    nasConnected,
+    setNasConnected,
+  ] =
+    useState(
+      true
+    )
+
+
+  const [
+    localMediaUrls,
+    setLocalMediaUrls,
+  ] =
+    useState<
+      Record<
+        string,
+        string
+      >
+    >({})
+
+
+  const requestedHomeDownloadsRef =
+    useRef<
+      Set<string>
+    >(
+      new Set()
+    )
+
+
+  const homePrefetchStartedRef =
+    useRef(
+      false
+    )
+
+
+  const isMobileApp =
+    typeof window !==
+      'undefined' &&
+    window.localStorage.getItem(
+      'deepspaceArchiveMobile'
+    ) ===
+      'true'
 
 
   /*
@@ -246,6 +454,13 @@ function HomePage() {
           }
 
 
+          const fromOfflineCache =
+            response.headers.get(
+              'X-DeepSpace-Archive-Offline-Cache'
+            ) ===
+              '1'
+
+
           const data:
             HomeMediaResponse =
             await response.json()
@@ -256,6 +471,94 @@ function HomePage() {
           ) {
 
             return
+
+          }
+
+
+          setNasConnected(
+            !fromOfflineCache
+          )
+
+
+          if (
+            isMobileApp &&
+            !fromOfflineCache
+          ) {
+
+            try {
+
+              const bridge =
+                getMobileHomeBridge()
+
+
+              if (
+                bridge
+              ) {
+
+                const records =
+                  bridge.getDownloads
+                    ? (
+                        JSON.parse(
+                          bridge.getDownloads()
+                        ) as
+                          MobileDownloadRecord[]
+                      )
+                    : []
+
+
+                const alreadyTracked =
+                  new Set(
+                    records
+                      .filter(
+                        (record) =>
+                          record.relativePath &&
+                          record.status !==
+                            'failed' &&
+                          record.status !==
+                            'missing'
+                      )
+                      .map(
+                        (record) =>
+                          record.relativePath as string
+                      )
+                  )
+
+
+                for (
+                  const homeItem
+                  of data.items
+                ) {
+
+                  if (
+                    alreadyTracked.has(
+                      homeItem.relativePath
+                    )
+                  ) {
+
+                    continue
+
+                  }
+
+
+                  queueHomeMediaDownload(
+                    selectedCharacter,
+                    homeItem,
+                    bridge,
+                    requestedHomeDownloadsRef.current
+                  )
+
+                }
+
+              }
+
+            } catch (downloadError) {
+
+              console.error(
+                'Unable to queue Home media for offline use:',
+                downloadError
+              )
+
+            }
 
           }
 
@@ -289,6 +592,11 @@ function HomePage() {
             return
 
           }
+
+
+          setNasConnected(
+            false
+          )
 
 
           setMediaItems(
@@ -337,7 +645,348 @@ function HomePage() {
 
     },
     [
+      isMobileApp,
       selectedCharacter,
+    ]
+  )
+
+
+  useEffect(
+    () => {
+
+      if (
+        !isMobileApp ||
+        !nasConnected ||
+        homePrefetchStartedRef.current
+      ) {
+
+        return
+
+      }
+
+
+      homePrefetchStartedRef.current =
+        true
+
+
+      let cancelled =
+        false
+
+
+      async function prefetchHomeMedia() {
+
+        const bridge =
+          getMobileHomeBridge()
+
+
+        if (
+          !bridge
+        ) {
+
+          return
+
+        }
+
+
+        let records:
+          MobileDownloadRecord[] =
+          []
+
+
+        try {
+
+          records =
+            bridge.getDownloads
+              ? (
+                  JSON.parse(
+                    bridge.getDownloads()
+                  ) as
+                    MobileDownloadRecord[]
+                )
+              : []
+
+        } catch (error) {
+
+          console.error(
+            'Unable to read Home download records:',
+            error
+          )
+
+        }
+
+
+        const alreadyTracked =
+          new Set(
+            records
+              .filter(
+                (record) =>
+                  record.relativePath &&
+                  record.status !==
+                    'failed' &&
+                  record.status !==
+                    'missing'
+              )
+              .map(
+                (record) =>
+                  record.relativePath as string
+              )
+          )
+
+
+        for (
+          const character
+          of characters
+        ) {
+
+          if (
+            cancelled
+          ) {
+
+            return
+
+          }
+
+
+          try {
+
+            const query =
+              new URLSearchParams({
+                character,
+              })
+
+
+            const response =
+              await fetch(
+                `/api/library/home?${query}`
+              )
+
+
+            if (
+              !response.ok ||
+              response.headers.get(
+                'X-DeepSpace-Archive-Offline-Cache'
+              ) ===
+                '1'
+            ) {
+
+              continue
+
+            }
+
+
+            const data:
+              HomeMediaResponse =
+              await response.json()
+
+
+            for (
+              const homeItem
+              of data.items
+            ) {
+
+              if (
+                alreadyTracked.has(
+                  homeItem.relativePath
+                )
+              ) {
+
+                continue
+
+              }
+
+
+              queueHomeMediaDownload(
+                character,
+                homeItem,
+                bridge,
+                requestedHomeDownloadsRef.current
+              )
+
+
+              alreadyTracked.add(
+                homeItem.relativePath
+              )
+
+            }
+
+          } catch (error) {
+
+            console.error(
+              `Unable to prefetch ${character} Home media:`,
+              error
+            )
+
+          }
+
+        }
+
+      }
+
+
+      void prefetchHomeMedia()
+
+
+      return () => {
+
+        cancelled =
+          true
+
+      }
+
+    },
+    [
+      isMobileApp,
+      nasConnected,
+    ]
+  )
+
+
+  useEffect(
+    () => {
+
+      if (
+        !isMobileApp ||
+        mediaItems.length ===
+          0
+      ) {
+
+        return
+
+      }
+
+
+      let cancelled =
+        false
+
+
+      function refreshLocalHomeMedia() {
+
+        if (
+          cancelled
+        ) {
+
+          return
+
+        }
+
+
+        const bridge =
+          getMobileHomeBridge()
+
+
+        const capacitor =
+          getCapacitorFileBridge()
+
+
+        if (
+          !bridge?.isDownloaded ||
+          !bridge.getLocalMediaPath ||
+          !capacitor?.convertFileSrc
+        ) {
+
+          return
+
+        }
+
+
+        const nextUrls:
+          Record<
+            string,
+            string
+          > = {}
+
+
+        for (
+          const homeItem
+          of mediaItems
+        ) {
+
+          try {
+
+            if (
+              !bridge.isDownloaded(
+                homeItem.relativePath
+              )
+            ) {
+
+              continue
+
+            }
+
+
+            const localPath =
+              bridge.getLocalMediaPath(
+                homeItem.relativePath
+              )
+
+
+            if (
+              localPath
+            ) {
+
+              nextUrls[
+                homeItem.relativePath
+              ] =
+                capacitor.convertFileSrc(
+                  localPath
+                )
+
+            }
+
+          } catch (error) {
+
+            console.error(
+              'Unable to resolve cached Home media:',
+              error
+            )
+
+          }
+
+        }
+
+
+        setLocalMediaUrls(
+          nextUrls
+        )
+
+      }
+
+
+      const initialTimer =
+        window.setTimeout(
+          refreshLocalHomeMedia,
+          0
+        )
+
+
+      const interval =
+        window.setInterval(
+          refreshLocalHomeMedia,
+          1000
+        )
+
+
+      return () => {
+
+        cancelled =
+          true
+
+
+        window.clearTimeout(
+          initialTimer
+        )
+
+
+        window.clearInterval(
+          interval
+        )
+
+      }
+
+    },
+    [
+      isMobileApp,
+      mediaItems,
     ]
   )
 
@@ -357,8 +1006,17 @@ function HomePage() {
 
   const currentMediaUrl =
     currentMedia
-      ? homeMediaUrl(
-          currentMedia
+      ? (
+          localMediaUrls[
+            currentMedia.relativePath
+          ] ??
+          (
+            nasConnected
+              ? homeMediaUrl(
+                  currentMedia
+                )
+              : null
+          )
         )
       : null
 

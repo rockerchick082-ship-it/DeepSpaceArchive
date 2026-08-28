@@ -28202,3 +28202,1289 @@ span {
   color:
     rgba(255, 255, 255, 0.72);
 }
+
+
+/* ========================================
+   ANDROID MOBILE APP — OFFLINE + LAYOUT
+   These overrides are enabled only when
+   DeepSpace Archive is running in the app.
+======================================== */
+
+.mobile-nas-status {
+  position:
+    fixed;
+
+  top:
+    calc(
+      8px +
+      env(
+        safe-area-inset-top,
+        0px
+      )
+    );
+
+  left:
+    50%;
+
+  z-index:
+    5000;
+
+  display:
+    inline-flex;
+
+  align-items:
+    center;
+
+  gap:
+    6px;
+
+  transform:
+    translateX(
+      -50%
+    );
+
+  padding:
+    6px
+    10px;
+
+  border:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.16
+    );
+
+  border-radius:
+    999px;
+
+  background:
+    rgba(
+      12,
+      13,
+      20,
+      0.80
+    );
+
+  backdrop-filter:
+    blur(
+      12px
+    );
+
+  -webkit-backdrop-filter:
+    blur(
+      12px
+    );
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      0.90
+    );
+
+  font-size:
+    0.62rem;
+
+  font-weight:
+    600;
+
+  letter-spacing:
+    0.04em;
+
+  pointer-events:
+    none;
+
+  box-shadow:
+    0
+    6px
+    22px
+    rgba(
+      0,
+      0,
+      0,
+      0.26
+    );
+}
+
+
+.mobile-nas-status > span {
+  width:
+    7px;
+
+  height:
+    7px;
+
+  border-radius:
+    50%;
+
+  background:
+    #78d9a4;
+}
+
+
+.mobile-nas-status.offline {
+  border-color:
+    rgba(
+      255,
+      194,
+      105,
+      0.24
+    );
+
+  background:
+    rgba(
+      43,
+      31,
+      19,
+      0.88
+    );
+
+  color:
+    #ffd69a;
+}
+
+
+.mobile-nas-status.offline > span {
+  background:
+    #ffbd62;
+}
+
+
+html[data-dsa-mobile="true"] {
+  background:
+    #090a10;
+}
+
+
+html[data-dsa-mobile="true"]
+body {
+  min-width:
+    0;
+
+  overscroll-behavior-y:
+    none;
+}
+
+
+html[data-dsa-mobile="true"]
+.archive-page,
+html[data-dsa-mobile="true"]
+.player-page {
+  padding-top:
+    calc(
+      44px +
+      env(
+        safe-area-inset-top,
+        0px
+      )
+    );
+
+  padding-right:
+    14px;
+
+  padding-bottom:
+    calc(
+      24px +
+      env(
+        safe-area-inset-bottom,
+        0px
+      )
+    );
+
+  padding-left:
+    14px;
+}
+
+
+html[data-dsa-mobile="true"]
+.archive-page-header {
+  gap:
+    11px;
+
+  margin-bottom:
+    20px;
+}
+
+
+html[data-dsa-mobile="true"]
+.archive-page-header
+.back-button,
+html[data-dsa-mobile="true"]
+.player-header
+.back-button {
+  width:
+    38px;
+
+  height:
+    38px;
+
+  flex:
+    0
+    0
+    38px;
+
+  font-size:
+    1.55rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.archive-page-header h1 {
+  margin-top:
+    2px;
+
+  font-size:
+    1.55rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.archive-eyebrow {
+  font-size:
+    0.56rem;
+
+  letter-spacing:
+    0.22em;
+}
+
+
+html[data-dsa-mobile="true"]
+.archive-library-controls {
+  gap:
+    10px;
+
+  margin-bottom:
+    14px;
+}
+
+
+html[data-dsa-mobile="true"]
+.character-filters {
+  width:
+    calc(
+      100vw -
+      28px
+    );
+
+  margin:
+    0;
+
+  padding:
+    1px
+    0
+    4px;
+
+  display:
+    flex;
+
+  flex-wrap:
+    nowrap;
+
+  gap:
+    7px;
+
+  overflow-x:
+    auto;
+
+  scrollbar-width:
+    none;
+
+  scroll-snap-type:
+    x
+    proximity;
+}
+
+
+html[data-dsa-mobile="true"]
+.character-filters::-webkit-scrollbar {
+  display:
+    none;
+}
+
+
+html[data-dsa-mobile="true"]
+.filter-button {
+  flex:
+    0
+    0
+    auto;
+
+  min-height:
+    36px;
+
+  padding:
+    7px
+    13px;
+
+  font-size:
+    0.76rem;
+
+  scroll-snap-align:
+    start;
+}
+
+
+html[data-dsa-mobile="true"]
+.archive-toolbar-row {
+  grid-template-columns:
+    repeat(
+      2,
+      minmax(
+        0,
+        1fr
+      )
+    );
+
+  gap:
+    8px;
+}
+
+
+html[data-dsa-mobile="true"]
+.archive-toolbar-search {
+  grid-column:
+    1 /
+    -1;
+}
+
+
+html[data-dsa-mobile="true"]
+.archive-toolbar-search,
+html[data-dsa-mobile="true"]
+.archive-toolbar-select,
+html[data-dsa-mobile="true"]
+.archive-clear-filters {
+  min-height:
+    40px;
+
+  width:
+    100%;
+
+  font-size:
+    0.76rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.archive-toolbar-search {
+  padding:
+    9px
+    14px;
+}
+
+
+html[data-dsa-mobile="true"]
+.archive-toolbar-select {
+  padding:
+    0
+    11px;
+}
+
+
+html[data-dsa-mobile="true"]
+.archive-clear-filters {
+  grid-column:
+    1 /
+    -1;
+
+  min-height:
+    34px;
+
+  padding:
+    5px
+    12px;
+}
+
+
+html[data-dsa-mobile="true"]
+.archive-result-count,
+html[data-dsa-mobile="true"]
+.library-count {
+  margin:
+    4px
+    0
+    12px;
+
+  font-size:
+    0.65rem;
+
+  letter-spacing:
+    0.05em;
+}
+
+
+html[data-dsa-mobile="true"]
+.memory-grid {
+  grid-template-columns:
+    repeat(
+      2,
+      minmax(
+        0,
+        1fr
+      )
+    );
+
+  gap:
+    12px
+    10px;
+}
+
+
+html[data-dsa-mobile="true"]
+.memory-thumbnail {
+  border-radius:
+    15px;
+}
+
+
+html[data-dsa-mobile="true"]
+.memory-info {
+  padding:
+    9px
+    4px
+    0;
+}
+
+
+html[data-dsa-mobile="true"]
+.memory-info h2 {
+  margin-bottom:
+    3px;
+
+  font-size:
+    0.88rem;
+
+  line-height:
+    1.2;
+}
+
+
+html[data-dsa-mobile="true"]
+.memory-info span,
+html[data-dsa-mobile="true"]
+.memory-catalog-meta,
+html[data-dsa-mobile="true"]
+.memory-linked-titles span {
+  font-size:
+    0.64rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.memory-card-actions {
+  top:
+    8px;
+
+  right:
+    8px;
+
+  gap:
+    5px;
+}
+
+
+html[data-dsa-mobile="true"]
+.memory-card-actions
+.memory-edit-button,
+html[data-dsa-mobile="true"]
+.memory-favorite-button {
+  min-width:
+    31px;
+
+  min-height:
+    30px;
+
+  padding:
+    6px
+    8px;
+
+  font-size:
+    0.68rem;
+
+  opacity:
+    1;
+
+  transform:
+    none;
+}
+
+
+html[data-dsa-mobile="true"]
+.memory-favorite-button {
+  font-size:
+    0.9rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.mobile-download-status {
+  left:
+    8px;
+
+  bottom:
+    8px;
+
+  padding:
+    5px
+    8px;
+
+  font-size:
+    0.62rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.memory-watch-status {
+  font-size:
+    0.61rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.memory-card:disabled {
+  cursor:
+    default;
+}
+
+
+html[data-dsa-mobile="true"]
+.mobile-media-not-downloaded
+.memory-card:disabled {
+  opacity:
+    1;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-header {
+  gap:
+    11px;
+
+  margin-bottom:
+    14px;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-title {
+  min-width:
+    0;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-title h1 {
+  margin-top:
+    2px;
+
+  overflow:
+    hidden;
+
+  font-size:
+    1.22rem;
+
+  line-height:
+    1.2;
+
+  text-overflow:
+    ellipsis;
+
+  white-space:
+    nowrap;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-source-info {
+  justify-content:
+    flex-start;
+
+  margin:
+    0
+    2px
+    7px;
+
+  font-size:
+    0.58rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-stage {
+  min-height:
+    0;
+
+  width:
+    calc(
+      100% +
+      28px
+    );
+
+  margin-left:
+    -14px;
+
+  border-right:
+    0;
+
+  border-left:
+    0;
+
+  border-radius:
+    0;
+
+  box-shadow:
+    0
+    12px
+    36px
+    rgba(
+      0,
+      0,
+      0,
+      0.28
+    );
+}
+
+
+html[data-dsa-mobile="true"]
+.memory-video-player {
+  width:
+    100%;
+
+  max-height:
+    58vh;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-user-state {
+  gap:
+    10px;
+
+  margin-top:
+    12px;
+
+  padding:
+    12px;
+
+  border-radius:
+    14px;
+}
+
+
+html[data-dsa-mobile="true"]
+.favorite-button {
+  min-height:
+    40px;
+
+  padding:
+    8px
+    12px;
+}
+
+
+html[data-dsa-mobile="true"]
+.rating-control {
+  width:
+    100%;
+
+  gap:
+    6px;
+}
+
+
+html[data-dsa-mobile="true"]
+.rating-star-wrapper {
+  width:
+    27px;
+
+  height:
+    29px;
+}
+
+
+html[data-dsa-mobile="true"]
+.rating-star-symbol {
+  font-size:
+    1.4rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.playlist-picker {
+  width:
+    100%;
+
+  min-width:
+    0;
+
+  padding-left:
+    0;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-extra-controls {
+  display:
+    grid;
+
+  grid-template-columns:
+    repeat(
+      2,
+      minmax(
+        0,
+        1fr
+      )
+    );
+
+  gap:
+    8px;
+
+  padding:
+    12px
+    0
+    3px;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-control,
+html[data-dsa-mobile="true"]
+.player-toggle {
+  width:
+    100%;
+
+  min-height:
+    42px;
+
+  box-sizing:
+    border-box;
+
+  justify-content:
+    center;
+
+  border-radius:
+    12px;
+
+  padding:
+    8px
+    9px;
+
+  font-size:
+    0.71rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-control {
+  gap:
+    6px;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-control span {
+  font-size:
+    0.64rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-navigation {
+  gap:
+    8px;
+
+  margin-top:
+    12px;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-nav-button {
+  min-height:
+    62px;
+
+  padding:
+    10px
+    11px;
+
+  border-radius:
+    13px;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-nav-direction {
+  font-size:
+    0.58rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-nav-button strong {
+  font-size:
+    0.72rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-shuffle-button {
+  min-height:
+    44px;
+
+  padding:
+    8px
+    12px;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-details {
+  display:
+    grid;
+
+  grid-template-columns:
+    repeat(
+      2,
+      minmax(
+        0,
+        1fr
+      )
+    );
+
+  gap:
+    14px
+    12px;
+
+  padding:
+    16px
+    4px;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-detail-label {
+  font-size:
+    0.54rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.player-details strong {
+  font-size:
+    0.78rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-page {
+  position:
+    relative;
+
+  width:
+    100%;
+
+  min-height:
+    100dvh;
+
+  overflow:
+    hidden;
+
+  background:
+    #08090f;
+
+  color:
+    white;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-page
+.video-stage {
+  position:
+    absolute;
+
+  inset:
+    0;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-page
+.background-video-main {
+  width:
+    100%;
+
+  height:
+    100dvh;
+
+  max-width:
+    none;
+
+  object-fit:
+    cover;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-page
+.background-video-blur {
+  inset:
+    -18px;
+
+  width:
+    calc(
+      100% +
+      36px
+    );
+
+  height:
+    calc(
+      100% +
+      36px
+    );
+
+  filter:
+    blur(
+      20px
+    )
+    brightness(
+      0.55
+    )
+    saturate(
+      0.82
+    );
+}
+
+
+html[data-dsa-mobile="true"]
+.home-page
+.top-bar {
+  top:
+    calc(
+      36px +
+      env(
+        safe-area-inset-top,
+        0px
+      )
+    );
+
+  padding:
+    0
+    14px;
+
+  gap:
+    10px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-page
+.archive-name {
+  max-width:
+    42vw;
+
+  overflow:
+    hidden;
+
+  font-size:
+    0.78rem;
+
+  letter-spacing:
+    0.04em;
+
+  text-overflow:
+    ellipsis;
+
+  white-space:
+    nowrap;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-top-actions {
+  gap:
+    7px;
+}
+
+
+html[data-dsa-mobile="true"]
+.character-button {
+  min-height:
+    36px;
+
+  padding:
+    7px
+    11px;
+
+  font-size:
+    0.75rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-settings-button {
+  width:
+    36px;
+
+  height:
+    36px;
+}
+
+
+html[data-dsa-mobile="true"]
+.character-menu {
+  width:
+    150px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-page
+.bottom-interface {
+  padding:
+    18px
+    14px
+    calc(
+      14px +
+      env(
+        safe-area-inset-bottom,
+        0px
+      )
+    );
+
+  background:
+    linear-gradient(
+      to top,
+      rgba(
+        8,
+        9,
+        15,
+        0.95
+      )
+      0%,
+      rgba(
+        8,
+        9,
+        15,
+        0.76
+      )
+      65%,
+      rgba(
+        8,
+        9,
+        15,
+        0
+      )
+      100%
+    );
+}
+
+
+html[data-dsa-mobile="true"]
+.home-media-control-row {
+  margin-bottom:
+    7px;
+}
+
+
+html[data-dsa-mobile="true"]
+.section-heading {
+  gap:
+    9px;
+
+  margin-bottom:
+    9px;
+}
+
+
+html[data-dsa-mobile="true"]
+.section-line {
+  width:
+    80px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-navigation-carousel {
+  margin-bottom:
+    20px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-navigation {
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(
+        0,
+        1fr
+      )
+    );
+
+  gap:
+    7px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-navigation-card {
+  min-height:
+    56px;
+
+  gap:
+    4px;
+
+  border-radius:
+    11px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-navigation-icon {
+  font-size:
+    0.88rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-navigation-title {
+  font-size:
+    0.62rem;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-navigation-arrow {
+  width:
+    24px;
+
+  height:
+    34px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-navigation-arrow-left {
+  left:
+    -9px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-navigation-arrow-right {
+  right:
+    -9px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-navigation-page-indicator {
+  bottom:
+    -15px;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-utility-navigation {
+  display:
+    grid;
+
+  grid-template-columns:
+    repeat(
+      2,
+      minmax(
+        0,
+        1fr
+      )
+    );
+
+  gap:
+    6px;
+
+  margin:
+    0;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-utility-link {
+  min-width:
+    0;
+
+  padding:
+    7px
+    9px;
+
+  font-size:
+    0.60rem;
+
+  white-space:
+    normal;
+
+  text-align:
+    center;
+}
+
+
+html[data-dsa-mobile="true"]
+.home-media-message {
+  padding:
+    20px;
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      0.72
+    );
+
+  text-align:
+    center;
+}
+
+
+@media (
+  max-width:
+    380px
+) {
+
+  html[data-dsa-mobile="true"]
+  .archive-page,
+  html[data-dsa-mobile="true"]
+  .player-page {
+    padding-right:
+      10px;
+
+    padding-left:
+      10px;
+  }
+
+
+  html[data-dsa-mobile="true"]
+  .memory-grid {
+    gap:
+      10px
+      8px;
+  }
+
+
+  html[data-dsa-mobile="true"]
+  .memory-info h2 {
+    font-size:
+      0.82rem;
+  }
+
+
+  html[data-dsa-mobile="true"]
+  .player-extra-controls {
+    grid-template-columns:
+      1fr;
+  }
+
+}
+

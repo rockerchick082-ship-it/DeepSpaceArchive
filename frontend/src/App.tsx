@@ -90,6 +90,8 @@ type MobileNativeBridge = {
   ) => string
 
   getServerUrl?: () => string
+
+  getAppBaseUrl?: () => string
 }
 
 
@@ -166,6 +168,55 @@ function isDeepSpaceMobile() {
 
 
   return mobile
+
+}
+
+
+function isBundledMobileArchive() {
+
+  const bridge =
+    getMobileBridge()
+
+
+  if (
+    !bridge
+  ) {
+
+    return false
+
+  }
+
+
+  try {
+
+    const appBaseUrl =
+      bridge.getAppBaseUrl?.()
+
+
+    if (
+      appBaseUrl
+    ) {
+
+      return (
+        new URL(
+          appBaseUrl
+        ).origin ===
+        window.location.origin
+      )
+
+    }
+
+  } catch {
+    // Fall through to the normal Capacitor host check.
+  }
+
+
+  return (
+    window.location.hostname ===
+      'localhost' ||
+    window.location.hostname ===
+      '127.0.0.1'
+  )
 
 }
 
@@ -452,6 +503,46 @@ function initializeMobileRuntime() {
         )
 
 
+      /*
+       * If an older installed build is still displaying the NAS-hosted
+       * page, let that page use its ordinary same-origin fetch behavior.
+       * The browser path already saves progress/completions correctly.
+       *
+       * Native proxying is only needed by the APK-bundled archive whose
+       * origin is Capacitor's localhost.
+       */
+      const bundledArchive =
+        isBundledMobileArchive()
+
+
+      if (
+        !bundledArchive
+      ) {
+
+        const response =
+          await originalFetch(
+            input,
+            init
+          )
+
+
+        if (
+          requestUrl.pathname ===
+            '/api/system-info'
+        ) {
+
+          publishMobileConnection(
+            response.ok
+          )
+
+        }
+
+
+        return response
+
+      }
+
+
       if (
         method ===
           'GET'
@@ -486,6 +577,58 @@ function initializeMobileRuntime() {
 
 
         return response
+
+      }
+
+
+      /*
+       * Archive state writes are intentionally sent through a local GET
+       * endpoint that Android intercepts and turns into the real NAS POST.
+       *
+       * WebView interception happens on its network worker rather than the
+       * JavaScript-interface thread, which makes progress/completion writes
+       * reliable while the app is playing media.
+       */
+      if (
+        requestUrl.pathname.startsWith(
+          '/api/archive/'
+        )
+      ) {
+
+        const body =
+          await requestBodyText(
+            input,
+            init
+          )
+
+
+        const proxyQuery =
+          new URLSearchParams({
+            path:
+              requestUrl.pathname +
+              requestUrl.search,
+
+            method,
+
+            body,
+          })
+
+
+        return originalFetch(
+          `/_dsa/archive-write?${proxyQuery}`,
+          {
+            method:
+              'GET',
+
+            cache:
+              'no-store',
+
+            headers: {
+              Accept:
+                'application/json',
+            },
+          }
+        )
 
       }
 

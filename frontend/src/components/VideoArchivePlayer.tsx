@@ -1044,6 +1044,10 @@ useEffect(
 
 
       if (!response.ok) {
+
+        restartHandledRef.current =
+          false
+
         return
       }
 
@@ -1066,6 +1070,10 @@ useEffect(
         video.currentTime
 
     } catch (error) {
+
+      restartHandledRef.current =
+        false
+
 
       console.error(
         'Unable to restart completed watch:',
@@ -1327,6 +1335,71 @@ useEffect(
 
     },
     []
+  )
+
+
+  /*
+   * Android can keep a video element alive during hash-route navigation,
+   * so relying only on pause/pagehide can lose the resume position.
+   * Save a lightweight checkpoint every 10 seconds while the app video
+   * is actively playing, and make one last best-effort save on unmount.
+   */
+  useEffect(
+    () => {
+
+      if (
+        typeof window ===
+          'undefined' ||
+        !window.DeepSpaceArchiveMobile ||
+        !relativePath
+      ) {
+
+        return
+
+      }
+
+
+      const interval =
+        window.setInterval(
+          () => {
+
+            const video =
+              videoRef.current
+
+
+            if (
+              !video ||
+              video.paused ||
+              video.ended
+            ) {
+
+              return
+
+            }
+
+
+            saveOnPageHideRef.current()
+
+          },
+          10000
+        )
+
+
+      return () => {
+
+        window.clearInterval(
+          interval
+        )
+
+
+        saveOnPageHideRef.current()
+
+      }
+
+    },
+    [
+      relativePath,
+    ]
   )
 
 
@@ -2015,62 +2088,15 @@ useEffect(
 
   async function handleVideoEnded() {
 
-    if (
-      relativePath
-    ) {
-
-      try {
-
-        const resetResponse =
-          await fetch(
-            '/api/archive/restart',
-            {
-              method:
-                'POST',
-
-              headers: {
-                'Content-Type':
-                  'application/json',
-              },
-
-              body:
-                JSON.stringify({
-                  category:
-                    categoryLabel,
-
-                  relativePath,
-                }),
-            }
-          )
-
-
-        if (
-          resetResponse.ok
-        ) {
-
-          const resetState:
-            ArchiveState =
-            await resetResponse.json()
-
-
-          setArchiveState(
-            resetState
-          )
-
-        }
-
-      } catch (resetError) {
-
-        console.error(
-          'Unable to prepare completed play count:',
-          resetError
-        )
-
-      }
-
-    }
-
-
+    /*
+     * Save the true end position first.
+     *
+     * The backend increments playCount when progress crosses the
+     * completion threshold from incomplete -> completed. Resetting
+     * completion before this save is unnecessary for a normal play
+     * and, if that reset succeeds while the following progress write
+     * fails, it erases the saved position without counting the play.
+     */
     await savePlaybackProgress()
 
 
@@ -2227,6 +2253,7 @@ useEffect(
     }
 
   }
+
 
 
   const mediaQuery =

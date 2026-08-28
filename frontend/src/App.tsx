@@ -1,5 +1,6 @@
 import {
   BrowserRouter,
+  HashRouter,
   Navigate,
   Routes,
   Route,
@@ -470,11 +471,18 @@ function initializeMobileRuntime() {
             '1'
 
 
-        publishMobileConnection(
-          !offline &&
-          response.status !==
-            503
-        )
+        if (
+          requestUrl.pathname ===
+            '/api/system-info'
+        ) {
+
+          publishMobileConnection(
+            !offline &&
+            response.status !==
+              503
+          )
+
+        }
 
 
         return response
@@ -534,11 +542,15 @@ function initializeMobileRuntime() {
         ) as NativeApiResult
 
 
-      publishMobileConnection(
-        Boolean(
-          result.connected
+      if (
+        result.connected
+      ) {
+
+        publishMobileConnection(
+          true
         )
-      )
+
+      }
 
 
       return new Response(
@@ -565,6 +577,7 @@ function initializeMobileRuntime() {
    * This makes the core library available after a cold offline launch.
    */
   const warmupEndpoints = [
+    '/api/system-info',
     '/api/setup/status',
     '/api/archive/states',
     '/api/archive/stats',
@@ -595,6 +608,44 @@ function initializeMobileRuntime() {
 
     },
     900
+  )
+
+
+  /*
+   * Connection state means "can Android reach the NAS right now?"
+   * It is intentionally independent of whether a video is streamed
+   * from the NAS or served from a downloaded local copy.
+   */
+  function refreshConnectionStatus() {
+
+    void window.fetch(
+      '/api/system-info',
+      {
+        cache:
+          'no-store',
+      }
+    ).catch(
+      () => {
+
+        publishMobileConnection(
+          false
+        )
+
+      }
+    )
+
+  }
+
+
+  window.setTimeout(
+    refreshConnectionStatus,
+    250
+  )
+
+
+  window.setInterval(
+    refreshConnectionStatus,
+    10000
   )
 
 }
@@ -701,7 +752,7 @@ function MobileConnectionStatus() {
 
 
       {connected
-        ? 'NAS Connected'
+        ? 'Connected'
         : 'Offline Mode'}
 
     </div>
@@ -913,18 +964,15 @@ function SetupGate({
 
 function App() {
 
+  const ArchiveRouter =
+    isDeepSpaceMobile()
+      ? HashRouter
+      : BrowserRouter
+
+
   return (
 
-    <BrowserRouter
-      basename={
-        isDeepSpaceMobile() &&
-        window.location.pathname.startsWith(
-          '/archive'
-        )
-          ? '/archive'
-          : undefined
-      }
-    >
+    <ArchiveRouter>
 
       <MobileConnectionStatus />
 
@@ -1224,7 +1272,7 @@ function App() {
 
       </SetupGate>
 
-    </BrowserRouter>
+    </ArchiveRouter>
 
   )
 

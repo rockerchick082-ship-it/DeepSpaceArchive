@@ -1516,9 +1516,11 @@ useEffect(
 
 
   const usingLocalMedia =
-    Boolean(
-      localMediaUrl
-    )
+    isMobileApp
+      ? mobileDownloaded
+      : Boolean(
+          localMediaUrl
+        )
 
 
   function downloadForOffline() {
@@ -2238,9 +2240,19 @@ useEffect(
     `/api/media?${mediaQuery}`
 
 
+  /*
+   * Keep a stable source URL in the Android app. The native WebView
+   * client chooses NAS streaming versus the downloaded file behind
+   * /api/media. Finishing a download therefore cannot replace <video src>
+   * and interrupt the video that is currently playing.
+   */
   const mediaUrl =
-    localMediaUrl ||
-    streamedMediaUrl
+    isMobileApp
+      ? streamedMediaUrl
+      : (
+          localMediaUrl ||
+          streamedMediaUrl
+        )
 
 
   return (

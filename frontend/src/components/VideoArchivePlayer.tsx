@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -44,6 +45,10 @@ declare global {
       getLocalMediaUrl?: (
         relativePath: string
       ) => string
+      getLocalMediaStreamUrl?: (
+        relativePath: string
+      ) => string
+      getServerUrl?: () => string
       deleteDownload: (
         relativePath: string
       ) => boolean
@@ -130,6 +135,141 @@ const autoPlayNextStorageKey =
   'deepspace-archive-auto-play-next'
 
 
+const mobileProgressStoragePrefix =
+  'deepspace-archive-mobile-progress:'
+
+
+type MobileProgressCheckpoint = {
+  progressSeconds: number
+  durationSeconds: number | null
+  savedAt: number
+}
+
+
+function mobileProgressStorageKey(
+  categoryLabel: string,
+  relativePath: string
+) {
+
+  return (
+    mobileProgressStoragePrefix +
+    encodeURIComponent(
+      categoryLabel
+    ) +
+    ':' +
+    encodeURIComponent(
+      relativePath
+    )
+  )
+
+}
+
+
+function readMobileProgressCheckpoint(
+  categoryLabel: string,
+  relativePath: string
+) {
+
+  try {
+
+    const raw =
+      localStorage.getItem(
+        mobileProgressStorageKey(
+          categoryLabel,
+          relativePath
+        )
+      )
+
+
+    if (
+      !raw
+    ) {
+
+      return null
+
+    }
+
+
+    const parsed =
+      JSON.parse(
+        raw
+      ) as
+        MobileProgressCheckpoint
+
+
+    if (
+      !Number.isFinite(
+        parsed.progressSeconds
+      )
+    ) {
+
+      return null
+
+    }
+
+
+    return parsed
+
+  } catch {
+
+    return null
+
+  }
+
+}
+
+
+function writeMobileProgressCheckpoint(
+  categoryLabel: string,
+  relativePath: string,
+  progressSeconds: number,
+  durationSeconds: number | null
+) {
+
+  try {
+
+    localStorage.setItem(
+      mobileProgressStorageKey(
+        categoryLabel,
+        relativePath
+      ),
+      JSON.stringify({
+        progressSeconds,
+        durationSeconds,
+        savedAt:
+          Date.now(),
+      } satisfies
+        MobileProgressCheckpoint)
+    )
+
+  } catch {
+    // Local resume cache is best-effort only.
+  }
+
+}
+
+
+function clearMobileProgressCheckpoint(
+  categoryLabel: string,
+  relativePath: string
+) {
+
+  try {
+
+    localStorage.removeItem(
+      mobileProgressStorageKey(
+        categoryLabel,
+        relativePath
+      )
+    )
+
+  } catch {
+    // Local resume cache is best-effort only.
+  }
+
+}
+
+
 function getInitialAutoPlayNext() {
 
   try {
@@ -179,6 +319,113 @@ function VideoArchivePlayer({
 
   const relativePath =
     searchParams.get('file')
+
+
+  const isMobileApp =
+    typeof window !==
+      'undefined' &&
+    Boolean(
+      window.DeepSpaceArchiveMobile
+    )
+
+
+  /*
+   * Pick the Android playback source once per archive item.
+   *
+   * - Existing download: use the app's loopback HTTP media server.
+   * - Not downloaded: stream directly from the NAS, just like the browser.
+   *
+   * The memo depends only on the selected item, so a download finishing
+   * while playback is active does not replace the current <video src>.
+   */
+  const mobilePlaybackUrl =
+    useMemo(
+      () => {
+
+        if (
+          !relativePath ||
+          !window.DeepSpaceArchiveMobile
+        ) {
+
+          return ''
+
+        }
+
+
+        const bridge =
+          window.DeepSpaceArchiveMobile
+
+
+        try {
+
+          if (
+            bridge.isDownloaded(
+              relativePath
+            )
+          ) {
+
+            const localStreamUrl =
+              bridge
+                .getLocalMediaStreamUrl?.(
+                  relativePath
+                ) ??
+              ''
+
+
+            if (
+              localStreamUrl
+            ) {
+
+              return localStreamUrl
+
+            }
+
+          }
+
+
+          const serverUrl =
+            bridge
+              .getServerUrl?.()
+              ?.replace(
+                /\/+$/,
+                ''
+              ) ??
+            ''
+
+
+          if (
+            serverUrl
+          ) {
+
+            const query =
+              new URLSearchParams({
+                relativePath,
+              })
+
+
+            return (
+              `${serverUrl}/api/media?${query}`
+            )
+
+          }
+
+        } catch (mediaSourceError) {
+
+          console.error(
+            'Unable to choose Android media source:',
+            mediaSourceError
+          )
+
+        }
+
+
+        return ''
+
+      },
+      [
+        relativePath,
+      ]
+    )
 
 
   const playlistText =
@@ -246,6 +493,14 @@ function VideoArchivePlayer({
 
   const restartHandledRef =
     useRef(false)
+
+
+  const seekingRef =
+    useRef(false)
+
+
+  const lastLocalCheckpointTimeRef =
+    useRef(0)
 
 
   const [item, setItem] =
@@ -359,6 +614,12 @@ useEffect(
 
     restartHandledRef.current =
       false
+
+    seekingRef.current =
+      false
+
+    lastLocalCheckpointTimeRef.current =
+      0
 
   }, [relativePath])
 
@@ -1062,6 +1323,18 @@ useEffect(
       )
 
 
+      if (
+        window.DeepSpaceArchiveMobile
+      ) {
+
+        clearMobileProgressCheckpoint(
+          categoryLabel,
+          relativePath
+        )
+
+      }
+
+
       lastTrackedTimeRef.current =
         video.currentTime
 
@@ -1089,6 +1362,75 @@ useEffect(
         categoryLabel,
       ]
     )
+
+
+  function saveLocalResumeCheckpoint(
+    force = false
+  ) {
+
+    const video =
+      videoRef.current
+
+
+    if (
+      !video ||
+      !relativePath ||
+      !window.DeepSpaceArchiveMobile
+    ) {
+
+      return
+
+    }
+
+
+    const currentTime =
+      video.currentTime
+
+
+    const now =
+      Date.now()
+
+
+    if (
+      !force &&
+      now -
+        lastLocalCheckpointTimeRef.current <
+        2000
+    ) {
+
+      return
+
+    }
+
+
+    if (
+      !Number.isFinite(
+        currentTime
+      ) ||
+      currentTime < 0
+    ) {
+
+      return
+
+    }
+
+
+    lastLocalCheckpointTimeRef.current =
+      now
+
+
+    writeMobileProgressCheckpoint(
+      categoryLabel,
+      relativePath,
+      currentTime,
+      Number.isFinite(
+        video.duration
+      )
+        ? video.duration
+        : null
+    )
+
+  }
 
 
   function trackPlaybackLocally() {
@@ -1138,6 +1480,14 @@ useEffect(
 
     lastTrackedTimeRef.current =
       currentTime
+
+
+    /*
+     * The Android app keeps a tiny local resume checkpoint instead
+     * of sending a NAS request every 10 seconds. This is intentionally
+     * local-only so it cannot stall the video stream.
+     */
+    saveLocalResumeCheckpoint()
 
   }
 
@@ -1270,6 +1620,30 @@ useEffect(
         await response.json()
 
 
+      if (
+        window.DeepSpaceArchiveMobile
+      ) {
+
+        if (
+          state.completed
+        ) {
+
+          clearMobileProgressCheckpoint(
+            categoryLabel,
+            relativePath
+          )
+
+        } else {
+
+          saveLocalResumeCheckpoint(
+            true
+          )
+
+        }
+
+      }
+
+
       setArchiveState(
         state
       )
@@ -1338,71 +1712,6 @@ useEffect(
   )
 
 
-  /*
-   * Android can keep a video element alive during hash-route navigation,
-   * so relying only on pause/pagehide can lose the resume position.
-   * Save a lightweight checkpoint every 10 seconds while the app video
-   * is actively playing, and make one last best-effort save on unmount.
-   */
-  useEffect(
-    () => {
-
-      if (
-        typeof window ===
-          'undefined' ||
-        !window.DeepSpaceArchiveMobile ||
-        !relativePath
-      ) {
-
-        return
-
-      }
-
-
-      const interval =
-        window.setInterval(
-          () => {
-
-            const video =
-              videoRef.current
-
-
-            if (
-              !video ||
-              video.paused ||
-              video.ended
-            ) {
-
-              return
-
-            }
-
-
-            saveOnPageHideRef.current()
-
-          },
-          10000
-        )
-
-
-      return () => {
-
-        window.clearInterval(
-          interval
-        )
-
-
-        saveOnPageHideRef.current()
-
-      }
-
-    },
-    [
-      relativePath,
-    ]
-  )
-
-
   const restoreProgress =
     useCallback(
       () => {
@@ -1413,7 +1722,8 @@ useEffect(
 
     if (
       !video ||
-      !archiveState
+      !archiveState ||
+      !relativePath
     ) {
       return
     }
@@ -1422,6 +1732,18 @@ useEffect(
     if (
       archiveState.completed
     ) {
+
+      if (
+        window.DeepSpaceArchiveMobile
+      ) {
+
+        clearMobileProgressCheckpoint(
+          categoryLabel,
+          relativePath
+        )
+
+      }
+
 
       video.currentTime =
         0
@@ -1450,23 +1772,40 @@ useEffect(
     }
 
 
+    const mobileCheckpoint =
+      window.DeepSpaceArchiveMobile
+        ? readMobileProgressCheckpoint(
+            categoryLabel,
+            relativePath
+          )
+        : null
+
+
+    const preferredProgress =
+      mobileCheckpoint &&
+      mobileCheckpoint.progressSeconds >
+        0
+        ? mobileCheckpoint.progressSeconds
+        : archiveState.progressSeconds
+
+
     if (
-      archiveState.progressSeconds >
+      preferredProgress >
         5 &&
-      archiveState.progressSeconds <
+      preferredProgress <
         video.duration - 5
     ) {
 
       video.currentTime =
-        archiveState.progressSeconds
+        preferredProgress
 
 
       lastTrackedTimeRef.current =
-        archiveState.progressSeconds
+        preferredProgress
 
 
       lastProgressSaveRef.current =
-        archiveState.progressSeconds
+        preferredProgress
 
 
       pendingWatchedSecondsRef.current =
@@ -1477,6 +1816,8 @@ useEffect(
       },
       [
         archiveState,
+        categoryLabel,
+        relativePath,
         resetCompletedWatch,
       ]
     )
@@ -1556,18 +1897,6 @@ useEffect(
 
   const currentRelativePath =
     relativePath
-
-
-  const isMobileApp =
-    typeof window !==
-      'undefined' &&
-    window.localStorage.getItem(
-      'deepspaceArchiveMobile'
-    ) ===
-      'true' &&
-    Boolean(
-      window.DeepSpaceArchiveMobile
-    )
 
 
   const localMediaUrl =
@@ -2275,7 +2604,10 @@ useEffect(
    */
   const mediaUrl =
     isMobileApp
-      ? streamedMediaUrl
+      ? (
+          mobilePlaybackUrl ||
+          streamedMediaUrl
+        )
       : (
           localMediaUrl ||
           streamedMediaUrl
@@ -2443,20 +2775,40 @@ useEffect(
           onTimeUpdate={
             trackPlaybackLocally
           }
-          onSeeking={
-            resetLocalTrackingPosition
-          }
-          onSeeked={
-            resetLocalTrackingPosition
-          }
+          onSeeking={() => {
+
+            seekingRef.current =
+              true
+
+            resetLocalTrackingPosition()
+
+          }}
+          onSeeked={() => {
+
+            seekingRef.current =
+              false
+
+            resetLocalTrackingPosition()
+
+            saveLocalResumeCheckpoint(
+              true
+            )
+
+          }}
           onPause={() => {
 
             /*
-             * ended has its own save + auto-advance path.
+             * Seeking can briefly pause Android's media element.
+             * Do not start a NAS write in the middle of the seek.
              */
             if (
-              !videoRef.current?.ended
+              !videoRef.current?.ended &&
+              !seekingRef.current
             ) {
+
+              saveLocalResumeCheckpoint(
+                true
+              )
 
               void savePlaybackProgress()
 

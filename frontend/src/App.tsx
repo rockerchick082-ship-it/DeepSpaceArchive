@@ -446,6 +446,29 @@ type OfflinePlaybackSyncResult = {
 }
 
 
+type MobileOfflinePlaybackRuntime = {
+  saveProgress: (
+    input: {
+      category: string
+      relativePath: string
+      progressSeconds: number
+      durationSeconds: number | null
+      watchedSeconds: number
+    }
+  ) => MobileArchiveState | null
+
+  restart: (
+    input: {
+      category: string
+      relativePath: string
+    }
+  ) => MobileArchiveState | null
+
+  flush: () => void
+  connected: () => boolean
+}
+
+
 const offlinePlaybackQueueKey =
   'deepspaceArchiveOfflinePlaybackQueue:v1'
 
@@ -1380,6 +1403,9 @@ function initializeMobileRuntime() {
     window as typeof window & {
       __deepSpaceArchiveMobileFetchInstalled?:
         boolean
+
+      DeepSpaceArchiveOfflinePlayback?:
+        MobileOfflinePlaybackRuntime
     }
 
 
@@ -1574,6 +1600,85 @@ function initializeMobileRuntime() {
 
     }
 
+  }
+
+
+  function queuePlaybackRequestLocally(
+    pathname: string,
+    body: Record<string, unknown>
+  ) {
+
+    const playbackWrite =
+      createPlaybackEvent(
+        pathname,
+        JSON.stringify(
+          body
+        )
+      )
+
+
+    if (
+      !playbackWrite
+    ) {
+
+      return null
+
+    }
+
+
+    /*
+     * Persist locally BEFORE doing any network work. This makes pause,
+     * navigation, app backgrounding, and true offline playback durable
+     * immediately instead of depending on an async fetch finishing.
+     */
+    enqueueOfflinePlaybackEvent(
+      playbackWrite.event,
+      playbackWrite.optimisticState
+    )
+
+
+    if (
+      mobileNasConnected
+    ) {
+
+      window.setTimeout(
+        () => {
+
+          void flushOfflinePlaybackQueue()
+
+        },
+        0
+      )
+
+    }
+
+
+    return playbackWrite.optimisticState
+
+  }
+
+
+  mobileWindow.DeepSpaceArchiveOfflinePlayback = {
+    saveProgress: (input) =>
+      queuePlaybackRequestLocally(
+        '/api/archive/progress',
+        input
+      ),
+
+    restart: (input) =>
+      queuePlaybackRequestLocally(
+        '/api/archive/restart',
+        input
+      ),
+
+    flush: () => {
+
+      void flushOfflinePlaybackQueue()
+
+    },
+
+    connected: () =>
+      mobileNasConnected,
   }
 
 

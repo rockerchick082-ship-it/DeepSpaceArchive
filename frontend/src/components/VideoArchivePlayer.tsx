@@ -149,6 +149,51 @@ type MobileProgressCheckpoint = {
 }
 
 
+type MobileOfflinePlaybackRuntime = {
+  saveProgress: (
+    input: {
+      category: string
+      relativePath: string
+      progressSeconds: number
+      durationSeconds: number | null
+      watchedSeconds: number
+    }
+  ) => ArchiveState | null
+
+  restart: (
+    input: {
+      category: string
+      relativePath: string
+    }
+  ) => ArchiveState | null
+
+  flush: () => void
+  connected: () => boolean
+}
+
+
+function getMobileOfflinePlaybackRuntime() {
+
+  if (
+    typeof window ===
+      'undefined'
+  ) {
+
+    return undefined
+
+  }
+
+
+  return (
+    window as typeof window & {
+      DeepSpaceArchiveOfflinePlayback?:
+        MobileOfflinePlaybackRuntime
+    }
+  ).DeepSpaceArchiveOfflinePlayback
+
+}
+
+
 function mobileProgressStorageKey(
   categoryLabel: string,
   relativePath: string
@@ -1257,6 +1302,61 @@ useEffect(
       true
 
 
+    const mobileRuntime =
+      getMobileOfflinePlaybackRuntime()
+
+
+    if (
+      isMobileApp &&
+      mobileRuntime
+    ) {
+
+      const state =
+        mobileRuntime.restart({
+          category:
+            categoryLabel,
+
+          relativePath,
+        })
+
+
+      if (
+        state
+      ) {
+
+        setArchiveState(
+          state
+        )
+
+
+        clearMobileProgressCheckpoint(
+          categoryLabel,
+          relativePath
+        )
+
+
+        lastTrackedTimeRef.current =
+          video.currentTime
+
+
+        lastProgressSaveRef.current =
+          video.currentTime
+
+
+        return
+
+      }
+
+
+      restartHandledRef.current =
+        false
+
+
+      return
+
+    }
+
+
     try {
 
       const response =
@@ -1338,6 +1438,7 @@ useEffect(
         archiveState,
         relativePath,
         categoryLabel,
+        isMobileApp,
       ]
     )
 
@@ -1519,10 +1620,35 @@ useEffect(
       pendingWatchedSecondsRef.current
 
 
+    const durationSeconds =
+      Number.isFinite(
+        video.duration
+      )
+        ? video.duration
+        : null
+
+
     /*
-     * Reset before awaiting the request. If playback resumes
-     * while the request is in flight, new watched time starts
-     * accumulating in a fresh bucket.
+     * Always persist the local resume checkpoint first. This is synchronous
+     * browser storage and survives SPA navigation even when the NAS is gone.
+     */
+    if (
+      isMobileApp
+    ) {
+
+      writeMobileProgressCheckpoint(
+        categoryLabel,
+        relativePath,
+        currentTime,
+        durationSeconds
+      )
+
+    }
+
+
+    /*
+     * Reset before any asynchronous work. If playback resumes while an online
+     * browser request is in flight, new watched time starts in a fresh bucket.
      */
     pendingWatchedSecondsRef.current =
       0
@@ -1534,6 +1660,59 @@ useEffect(
 
     lastProgressSaveRef.current =
       currentTime
+
+
+    const mobileRuntime =
+      getMobileOfflinePlaybackRuntime()
+
+
+    if (
+      isMobileApp &&
+      mobileRuntime
+    ) {
+
+      const state =
+        mobileRuntime.saveProgress({
+          category:
+            categoryLabel,
+
+          relativePath,
+
+          progressSeconds:
+            currentTime,
+
+          durationSeconds,
+
+          watchedSeconds,
+        })
+
+
+      if (
+        !state
+      ) {
+
+        pendingWatchedSecondsRef.current +=
+          watchedSeconds
+
+
+        return
+
+      }
+
+
+      setArchiveState(
+        state
+      )
+
+
+      /*
+       * Do not clear a completed checkpoint here. Keeping the end checkpoint
+       * until the next open lets restore logic decide whether it represents a
+       * newer offline session than the cached NAS state.
+       */
+      return
+
+    }
 
 
     try {
@@ -1560,19 +1739,11 @@ useEffect(
                 progressSeconds:
                   currentTime,
 
-                durationSeconds:
-                  Number.isFinite(
-                    video.duration
-                  )
-                    ? video.duration
-                    : null,
+                durationSeconds,
 
                 watchedSeconds,
               }),
 
-            /*
-             * Helps the final save survive navigation/page close.
-             */
             keepalive:
               true,
           }
@@ -1581,45 +1752,16 @@ useEffect(
 
       if (!response.ok) {
 
-        /*
-         * Put the unsaved watch time back so a later pause/end
-         * can retry it.
-         */
         pendingWatchedSecondsRef.current +=
           watchedSeconds
 
         return
-
       }
 
 
       const state:
         ArchiveState =
         await response.json()
-
-
-      if (
-        window.DeepSpaceArchiveMobile
-      ) {
-
-        if (
-          state.completed
-        ) {
-
-          clearMobileProgressCheckpoint(
-            categoryLabel,
-            relativePath
-          )
-
-        } else {
-
-          saveLocalResumeCheckpoint(
-            true
-          )
-
-        }
-
-      }
 
 
       setArchiveState(
@@ -1690,6 +1832,25 @@ useEffect(
   )
 
 
+  useEffect(
+    () => {
+
+      return () => {
+
+        /*
+         * React Router navigation does not fire pagehide. The mobile save path
+         * persists synchronously before it starts any optional sync, so this
+         * cleanup makes hardware-back and SPA navigation durable too.
+         */
+        saveOnPageHideRef.current()
+
+      }
+
+    },
+    []
+  )
+
+
   const restoreProgress =
     useCallback(
       () => {
@@ -1707,21 +1868,43 @@ useEffect(
     }
 
 
+    const mobileCheckpoint =
+      window.DeepSpaceArchiveMobile
+        ? readMobileProgressCheckpoint(
+            categoryLabel,
+            relativePath
+          )
+        : null
+
+
+    const archiveTimestamp =
+      archiveState.lastWatched
+        ? Date.parse(
+            archiveState.lastWatched
+          )
+        : Number.NEGATIVE_INFINITY
+
+
+    const checkpointIsNewer =
+      Boolean(
+        mobileCheckpoint &&
+        Number.isFinite(
+          mobileCheckpoint.savedAt
+        ) &&
+        mobileCheckpoint.savedAt >
+          archiveTimestamp
+      )
+
+
+    /*
+     * A cached NAS state can still say "completed" while the user has a newer
+     * offline/local session. Never discard that newer checkpoint merely because
+     * the cached server state is completed.
+     */
     if (
-      archiveState.completed
+      archiveState.completed &&
+      !checkpointIsNewer
     ) {
-
-      if (
-        window.DeepSpaceArchiveMobile
-      ) {
-
-        clearMobileProgressCheckpoint(
-          categoryLabel,
-          relativePath
-        )
-
-      }
-
 
       video.currentTime =
         0
@@ -1750,28 +1933,37 @@ useEffect(
     }
 
 
-    const mobileCheckpoint =
-      window.DeepSpaceArchiveMobile
-        ? readMobileProgressCheckpoint(
-            categoryLabel,
-            relativePath
-          )
-        : null
-
-
     const preferredProgress =
-      mobileCheckpoint &&
-      mobileCheckpoint.progressSeconds >
-        0
+      checkpointIsNewer &&
+      mobileCheckpoint
         ? mobileCheckpoint.progressSeconds
         : archiveState.progressSeconds
 
 
-    if (
-      preferredProgress >
-        5 &&
+    const knownDuration =
+      Number.isFinite(
+        video.duration
+      ) &&
+      video.duration > 0
+        ? video.duration
+        : (
+            mobileCheckpoint?.durationSeconds ??
+            archiveState.durationSeconds
+          )
+
+
+    const beforeEnd =
+      !knownDuration ||
       preferredProgress <
-        video.duration - 5
+        knownDuration - 2
+
+
+    if (
+      Number.isFinite(
+        preferredProgress
+      ) &&
+      preferredProgress > 1 &&
+      beforeEnd
     ) {
 
       video.currentTime =
@@ -2429,7 +2621,39 @@ useEffect(
       }
 
 
-      try {
+      const mobileRuntime =
+        getMobileOfflinePlaybackRuntime()
+
+
+      if (
+        isMobileApp &&
+        mobileRuntime
+      ) {
+
+        const state =
+          mobileRuntime.restart({
+            category:
+              categoryLabel,
+
+            relativePath,
+          })
+
+
+        if (
+          state
+        ) {
+
+          setArchiveState(
+            state
+          )
+
+
+          restartHandledRef.current =
+            true
+
+        }
+
+      } else try {
 
         const response =
           await fetch(
@@ -2606,6 +2830,16 @@ useEffect(
               : returnPath
           }
           className="back-button"
+          onClick={() => {
+
+            saveLocalResumeCheckpoint(
+              true
+            )
+
+
+            void savePlaybackProgress()
+
+          }}
         >
           ‹
         </Link>

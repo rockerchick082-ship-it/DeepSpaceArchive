@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -45,6 +46,9 @@ declare global {
         relativePath: string
       ) => string
       getLocalMediaStreamUrl?: (
+        relativePath: string
+      ) => string
+      getMediaStreamUrl?: (
         relativePath: string
       ) => string
       getServerUrl?: () => string
@@ -325,6 +329,80 @@ function VideoArchivePlayer({
       'undefined' &&
     Boolean(
       window.DeepSpaceArchiveMobile
+    )
+
+
+  /*
+   * Choose the Android media transport exactly once per archive item.
+   *
+   * The native loopback server gives Chromium a real HTTP endpoint with
+   * proper byte-range behavior. If the item was already downloaded when
+   * this player opened, the URL is pinned to the local copy. Otherwise it
+   * is pinned to the NAS proxy. A download finishing mid-playback therefore
+   * cannot replace the active <video src>.
+   */
+  const mobilePlayback =
+    useMemo(
+      () => {
+
+        if (
+          !isMobileApp ||
+          !relativePath ||
+          !window.DeepSpaceArchiveMobile
+        ) {
+
+          return {
+            url: '',
+            local: false,
+          }
+
+        }
+
+
+        const bridge =
+          window.DeepSpaceArchiveMobile
+
+
+        try {
+
+          const local =
+            bridge.isDownloaded(
+              relativePath
+            )
+
+
+          const url =
+            bridge.getMediaStreamUrl?.(
+              relativePath
+            ) ??
+            ''
+
+
+          return {
+            url,
+            local,
+          }
+
+        } catch (mediaSourceError) {
+
+          console.error(
+            'Unable to choose Android media source:',
+            mediaSourceError
+          )
+
+
+          return {
+            url: '',
+            local: false,
+          }
+
+        }
+
+      },
+      [
+        isMobileApp,
+        relativePath,
+      ]
     )
 
 
@@ -1819,7 +1897,7 @@ useEffect(
 
   const usingLocalMedia =
     isMobileApp
-      ? mobileDownloaded
+      ? mobilePlayback.local
       : Boolean(
           localMediaUrl
         )
@@ -2497,20 +2575,17 @@ useEffect(
 
 
   /*
-   * Android always keeps the media element on the app-local /api/media
-   * URL. DeepSpaceArchiveWebViewClient handles that URL:
-   *
-   * - while connected, it proxies the request (including byte ranges)
-   *   to the NAS;
-   * - when the item is downloaded, it serves the Android file locally;
-   * - the <video src> itself never changes when a download completes.
-   *
-   * Keeping playback same-origin also avoids Android WebView blocking a
-   * direct HTTP NAS/127.0.0.1 URL from Capacitor's HTTPS app origin.
+   * Android video bypasses WebResourceResponse entirely. Chromium talks to
+   * the app's loopback HTTP media server, which either proxies the NAS or
+   * serves the pinned downloaded file with genuine Range / 206 responses.
+   * This is what makes seeking reliable in both online and offline mode.
    */
   const mediaUrl =
     isMobileApp
-      ? streamedMediaUrl
+      ? (
+          mobilePlayback.url ||
+          streamedMediaUrl
+        )
       : (
           localMediaUrl ||
           streamedMediaUrl
@@ -2693,9 +2768,12 @@ useEffect(
 
             resetLocalTrackingPosition()
 
-            saveLocalResumeCheckpoint(
-              true
-            )
+            /*
+             * Do not save the seek destination immediately. A failed seek
+             * must not poison the local resume checkpoint. Once playback
+             * actually advances again, onTimeUpdate will save the new stable
+             * position without touching the NAS.
+             */
 
           }}
           onPause={() => {

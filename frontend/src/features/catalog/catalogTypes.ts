@@ -262,6 +262,31 @@ export type WikiPhoneSyncResult = {
 }
 
 
+export type WikiPageFreshnessStatus = {
+  id: string
+  label: string
+  sourceUrl: string
+  purgeUrl: string
+  checkedAt: string
+  updatedAt: string | null
+  ageHours: number | null
+  fresh: boolean | null
+  stale: boolean
+  autoPurgeAttempted: boolean
+  autoPurgeSucceeded: boolean | null
+  error: string | null
+}
+
+
+export type WikiCacheFreshnessResult = {
+  checkedAt: string
+  maxAgeHours: number
+  allFresh: boolean
+  needsAttention: boolean
+  pages: WikiPageFreshnessStatus[]
+}
+
+
 export type WikiSyncProgress = {
   phase:
     | 'fetching-list'

@@ -433,6 +433,269 @@ export function resetCompletion(
   )
 
 }
+
+export type OfflinePlaybackMergeEvent = {
+  eventId: string
+  category: string
+  relativePath: string
+  occurredAt: string
+  progressSeconds: number
+  durationSeconds: number | null
+  watchedSecondsDelta: number
+  playCountDelta: number
+  completed: boolean
+}
+
+
+export function mergeOfflinePlaybackEvents(
+  events:
+    OfflinePlaybackMergeEvent[]
+) {
+
+  const processedEventIds:
+    string[] =
+    []
+
+
+  const duplicateEventIds:
+    string[] =
+    []
+
+
+  const touched =
+    new Map<
+      string,
+      {
+        category: string
+        relativePath: string
+      }
+    >()
+
+
+  database.exec(
+    'BEGIN IMMEDIATE'
+  )
+
+
+  try {
+
+    for (
+      const event
+      of events
+    ) {
+
+      ensureState(
+        event.category,
+        event.relativePath
+      )
+
+
+      const ledgerResult =
+        database
+          .prepare(`
+            INSERT OR IGNORE INTO archive_offline_event (
+              event_id,
+              processed_at
+            )
+            VALUES (?, ?)
+          `)
+          .run(
+            event.eventId,
+            new Date()
+              .toISOString()
+          )
+
+
+      if (
+        ledgerResult.changes ===
+          0
+      ) {
+
+        duplicateEventIds.push(
+          event.eventId
+        )
+
+
+        continue
+
+      }
+
+
+      const current =
+        getArchiveState(
+          event.category,
+          event.relativePath
+        )
+
+
+      const currentTime =
+        current.lastWatched
+          ? Date.parse(
+              current.lastWatched
+            )
+          : Number.NEGATIVE_INFINITY
+
+
+      const eventTime =
+        Date.parse(
+          event.occurredAt
+        )
+
+
+      const eventIsNewest =
+        !Number.isFinite(
+          currentTime
+        ) ||
+        eventTime >=
+          currentTime
+
+
+      const nextDuration =
+        event.durationSeconds ===
+          null
+          ? current.durationSeconds
+          : event.durationSeconds
+
+
+      database
+        .prepare(`
+          UPDATE archive_state
+
+          SET
+            play_count =
+              play_count + ?,
+
+            total_watch_seconds =
+              total_watch_seconds + ?,
+
+            progress_seconds = ?,
+
+            duration_seconds = ?,
+
+            completed = ?,
+
+            last_watched = ?
+
+          WHERE
+            category = ?
+            AND relative_path = ?
+        `)
+        .run(
+          Math.max(
+            0,
+            Math.trunc(
+              event.playCountDelta
+            )
+          ),
+
+          Math.max(
+            0,
+            event.watchedSecondsDelta
+          ),
+
+          eventIsNewest
+            ? event.progressSeconds
+            : current.progressSeconds,
+
+          eventIsNewest
+            ? nextDuration
+            : current.durationSeconds,
+
+          eventIsNewest
+            ? (
+                event.completed
+                  ? 1
+                  : 0
+              )
+            : (
+                current.completed
+                  ? 1
+                  : 0
+              ),
+
+          eventIsNewest
+            ? event.occurredAt
+            : current.lastWatched,
+
+          event.category,
+          event.relativePath
+        )
+
+
+      processedEventIds.push(
+        event.eventId
+      )
+
+
+      touched.set(
+        `${event.category}\u0000${event.relativePath}`,
+        {
+          category:
+            event.category,
+
+          relativePath:
+            event.relativePath,
+        }
+      )
+
+    }
+
+
+    database
+      .prepare(`
+        DELETE FROM archive_offline_event
+        WHERE processed_at < ?
+      `)
+      .run(
+        new Date(
+          Date.now() -
+          (
+            365 *
+            24 *
+            60 *
+            60 *
+            1000
+          )
+        ).toISOString()
+      )
+
+
+    database.exec(
+      'COMMIT'
+    )
+
+  } catch (error) {
+
+    database.exec(
+      'ROLLBACK'
+    )
+
+
+    throw error
+
+  }
+
+
+  const states =
+    [
+      ...touched.values(),
+    ].map(
+      (identity) =>
+        getArchiveState(
+          identity.category,
+          identity.relativePath
+        )
+    )
+
+
+  return {
+    processedEventIds,
+    duplicateEventIds,
+    states,
+  }
+
+}
+
 export type ArchiveStats = {
   totalItemsWithState: number
   totalCompletedWatches: number

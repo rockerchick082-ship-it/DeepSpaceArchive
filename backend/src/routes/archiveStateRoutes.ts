@@ -6,6 +6,7 @@ import {
   getArchiveState,
   getArchiveStats,
   listArchiveStates,
+  mergeOfflinePlaybackEvents,
   resetCompletion,
   saveProgress,
   setFavorite,
@@ -378,6 +379,204 @@ router.post(
 
     response.json(
       state
+    )
+
+  }
+)
+
+
+router.post(
+  '/offline-sync',
+  (
+    request,
+    response
+  ) => {
+
+    const rawEvents =
+      Array.isArray(
+        request.body?.events
+      )
+        ? request.body.events
+        : null
+
+
+    if (
+      !rawEvents
+    ) {
+
+      response.status(400).json({
+        error:
+          'events must be an array',
+      })
+
+
+      return
+    }
+
+
+    if (
+      rawEvents.length >
+      500
+    ) {
+
+      response.status(400).json({
+        error:
+          'A maximum of 500 offline playback events can be synced at once.',
+      })
+
+
+      return
+    }
+
+
+    const events =
+      []
+
+
+    for (
+      const raw
+      of rawEvents
+    ) {
+
+      const identity =
+        readIdentity(
+          raw
+        )
+
+
+      if (
+        !identity ||
+        typeof raw.eventId !==
+          'string' ||
+        !raw.eventId.trim() ||
+        typeof raw.occurredAt !==
+          'string' ||
+        !Number.isFinite(
+          Date.parse(
+            raw.occurredAt
+          )
+        )
+      ) {
+
+        response.status(400).json({
+          error:
+            'Every offline event requires eventId, category, relativePath, and occurredAt.',
+        })
+
+
+        return
+      }
+
+
+      const progressSeconds =
+        Number(
+          raw.progressSeconds
+        )
+
+
+      const durationSeconds =
+        raw.durationSeconds ===
+          null
+          ? null
+          : Number(
+              raw.durationSeconds
+            )
+
+
+      const watchedSecondsDelta =
+        Number(
+          raw.watchedSecondsDelta ??
+          0
+        )
+
+
+      const playCountDelta =
+        Number(
+          raw.playCountDelta ??
+          0
+        )
+
+
+      if (
+        !Number.isFinite(
+          progressSeconds
+        ) ||
+        progressSeconds <
+          0 ||
+        (
+          durationSeconds !==
+            null &&
+          (
+            !Number.isFinite(
+              durationSeconds
+            ) ||
+            durationSeconds <
+              0
+          )
+        ) ||
+        !Number.isFinite(
+          watchedSecondsDelta
+        ) ||
+        watchedSecondsDelta <
+          0 ||
+        !Number.isFinite(
+          playCountDelta
+        ) ||
+        playCountDelta <
+          0 ||
+        !Number.isInteger(
+          playCountDelta
+        ) ||
+        typeof raw.completed !==
+          'boolean'
+      ) {
+
+        response.status(400).json({
+          error:
+            'Offline playback event values are invalid.',
+        })
+
+
+        return
+      }
+
+
+      events.push({
+        eventId:
+          raw.eventId.trim(),
+
+        category:
+          identity.category,
+
+        relativePath:
+          identity.relativePath,
+
+        occurredAt:
+          raw.occurredAt,
+
+        progressSeconds,
+
+        durationSeconds,
+
+        watchedSecondsDelta,
+
+        playCountDelta,
+
+        completed:
+          raw.completed,
+      })
+
+    }
+
+
+    const result =
+      mergeOfflinePlaybackEvents(
+        events
+      )
+
+
+    response.json(
+      result
     )
 
   }

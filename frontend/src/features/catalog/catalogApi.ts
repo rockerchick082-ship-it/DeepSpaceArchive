@@ -9,6 +9,7 @@ import type {
   CatalogRelationshipView,
   CatalogResponse,
   CatalogStats,
+  WikiCacheFreshnessResult,
   WikiPhoneSyncResult,
   WikiPreviewResponse,
   WikiSyncJob,
@@ -321,6 +322,55 @@ export async function deleteCatalogRecord(
         'DELETE',
     },
     'Unable to delete catalog record.'
+  )
+
+}
+
+
+export async function fetchWikiCacheStatus(
+  force = false
+) {
+
+  const query =
+    new URLSearchParams()
+
+
+  if (
+    force
+  ) {
+
+    query.set(
+      'force',
+      'true'
+    )
+
+  }
+
+
+  const suffix =
+    query.toString()
+      ? `?${query}`
+      : ''
+
+
+  return requestJson<WikiCacheFreshnessResult>(
+    `/api/catalog/wiki/cache/status${suffix}`,
+    undefined,
+    'Unable to check wiki page freshness.'
+  )
+
+}
+
+
+export async function refreshWikiCacheStatus() {
+
+  return requestJson<WikiCacheFreshnessResult>(
+    '/api/catalog/wiki/cache/check',
+    {
+      method:
+        'POST',
+    },
+    'Unable to refresh wiki page freshness.'
   )
 
 }

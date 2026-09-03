@@ -16,6 +16,7 @@ import type {
   CatalogStats,
   MatchCandidate,
   SupplementalSyncResult,
+  WikiCacheFreshnessResult,
   WikiPhoneSyncResult,
   WikiPreviewResponse,
   WikiSyncProgress,
@@ -32,10 +33,12 @@ import {
   fetchCatalogCandidates,
   fetchCatalogRelationshipItems,
   fetchCatalogStats,
+  fetchWikiCacheStatus,
   fetchWikiMemoryPreview,
   fetchWikiMemorySyncJob,
   linkCatalogFile,
   overrideCatalogFileName,
+  refreshWikiCacheStatus,
   runCatalogAutoMatch,
   saveCatalogRecord,
   startWikiMemorySync,
@@ -71,6 +74,15 @@ import CatalogPagination
 
 const CATALOG_PAGE_SIZE =
   100
+
+
+const WIKI_SYNC_CHARACTERS = [
+  'Xavier',
+  'Zayne',
+  'Rafayel',
+  'Sylus',
+  'Caleb',
+]
 
 
 function MetadataCatalogPage() {
@@ -708,6 +720,124 @@ function MetadataCatalogPage() {
     useState<WikiSyncProgress | null>(
       null
     )
+
+
+  const [
+    wikiCacheFreshness,
+    setWikiCacheFreshness,
+  ] =
+    useState<WikiCacheFreshnessResult | null>(
+      null
+    )
+
+
+  const [
+    wikiCacheLoading,
+    setWikiCacheLoading,
+  ] =
+    useState(
+      false
+    )
+
+
+  const [
+    wikiCacheError,
+    setWikiCacheError,
+  ] =
+    useState(
+      ''
+    )
+
+
+  useEffect(
+    () => {
+
+      let cancelled =
+        false
+
+
+      async function loadWikiCacheFreshness() {
+
+        try {
+
+          setWikiCacheLoading(
+            true
+          )
+
+
+          const result =
+            await fetchWikiCacheStatus()
+
+
+          if (
+            cancelled
+          ) {
+
+            return
+
+          }
+
+
+          setWikiCacheFreshness(
+            result
+          )
+
+
+          setWikiCacheError(
+            ''
+          )
+
+        } catch (error) {
+
+          console.error(
+            'Unable to check wiki page freshness:',
+            error
+          )
+
+
+          if (
+            !cancelled
+          ) {
+
+            setWikiCacheError(
+              error instanceof
+                Error
+                ? error.message
+                : 'Unable to check wiki page freshness.'
+            )
+
+          }
+
+        } finally {
+
+          if (
+            !cancelled
+          ) {
+
+            setWikiCacheLoading(
+              false
+            )
+
+          }
+
+        }
+
+      }
+
+
+      void loadWikiCacheFreshness()
+
+
+      return () => {
+
+        cancelled =
+          true
+
+      }
+
+    },
+    []
+  )
 
 
   const filterQueryString =
@@ -1597,6 +1727,89 @@ function MetadataCatalogPage() {
   }
 
 
+  async function refreshWikiCacheFreshness() {
+
+    try {
+
+      setWikiCacheLoading(
+        true
+      )
+
+
+      const result =
+        await refreshWikiCacheStatus()
+
+
+      setWikiCacheFreshness(
+        result
+      )
+
+
+      setWikiCacheError(
+        ''
+      )
+
+
+      return result
+
+    } catch (error) {
+
+      console.error(
+        'Unable to refresh wiki page freshness:',
+        error
+      )
+
+
+      const message =
+        error instanceof
+          Error
+          ? error.message
+          : 'Unable to refresh wiki page freshness.'
+
+
+      setWikiCacheError(
+        message
+      )
+
+
+      throw error
+
+    } finally {
+
+      setWikiCacheLoading(
+        false
+      )
+
+    }
+
+  }
+
+
+  async function ensureWikiPagesFresh() {
+
+    const result =
+      await refreshWikiCacheFreshness()
+
+
+    if (
+      result.needsAttention
+    ) {
+
+      setWikiError(
+        'One or more wiki source pages are still more than 24 hours out of date. Use the cache warning links below, purge those pages, then check again before syncing.'
+      )
+
+
+      return false
+
+    }
+
+
+    return true
+
+  }
+
+
   async function previewWikiMemories() {
 
     try {
@@ -1616,15 +1829,79 @@ function MetadataCatalogPage() {
       )
 
 
-      const data =
-        await fetchWikiMemoryPreview(
-          wikiCharacter
+      if (
+        !(await ensureWikiPagesFresh())
+      ) {
+
+        return
+
+      }
+
+
+      const characters =
+        wikiCharacter ===
+          'All'
+          ? WIKI_SYNC_CHARACTERS
+          : [
+              wikiCharacter,
+            ]
+
+
+      const previews:
+        WikiPreviewResponse[] =
+        []
+
+
+      for (
+        const character
+        of characters
+      ) {
+
+        previews.push(
+          await fetchWikiMemoryPreview(
+            character
+          )
+        )
+
+      }
+
+
+      if (
+        previews.length ===
+          1
+      ) {
+
+        setWikiPreview(
+          previews[0]
         )
 
 
-      setWikiPreview(
-        data
-      )
+        return
+
+      }
+
+
+      setWikiPreview({
+        character:
+          'All',
+
+        count:
+          previews.reduce(
+            (
+              total,
+              preview
+            ) =>
+              total +
+              preview.count,
+            0
+          ),
+
+        items:
+          previews.flatMap(
+            (preview) =>
+              preview.items
+          ),
+      })
 
     } catch (previewError) {
 
@@ -1675,83 +1952,179 @@ function MetadataCatalogPage() {
       )
 
 
-      setWikiSyncProgress({
-        phase:
-          'fetching-list',
-
-        current:
-          0,
-
-        total:
-          1,
-
-        percent:
-          0,
-
-        message:
-          `Starting ${wikiCharacter} wiki sync...`,
-      })
-
-
-      const started =
-        await startWikiMemorySync(
-          wikiCharacter
-        )
-
-
-      setWikiSyncProgress(
-        started.progress
-      )
-
-
-      let finished =
-        false
-
-
-      while (
-        !finished
+      if (
+        !(await ensureWikiPagesFresh())
       ) {
 
-        await new Promise<void>(
-          (resolve) => {
+        return
 
-            window.setTimeout(
-              resolve,
-              750
+      }
+
+
+      const characters =
+        wikiCharacter ===
+          'All'
+          ? WIKI_SYNC_CHARACTERS
+          : [
+              wikiCharacter,
+            ]
+
+
+      let aggregateMemory:
+        WikiSyncResult | null =
+        null
+
+
+      let aggregateSupplemental:
+        SupplementalSyncResult | null =
+        null
+
+
+      for (
+        let characterIndex =
+          0;
+        characterIndex <
+          characters.length;
+        characterIndex +=
+          1
+      ) {
+
+        const character =
+          characters[
+            characterIndex
+          ]
+
+
+        setWikiSyncProgress({
+          phase:
+            'fetching-list',
+
+          current:
+            characterIndex,
+
+          total:
+            characters.length,
+
+          percent:
+            Math.round(
+              (
+                characterIndex /
+                characters.length
+              ) *
+              100
+            ),
+
+          message:
+            wikiCharacter ===
+              'All'
+              ? `Starting ${character} (${characterIndex + 1} of ${characters.length})...`
+              : `Starting ${character} wiki sync...`,
+        })
+
+
+        const started =
+          await startWikiMemorySync(
+            character
+          )
+
+
+        let finished =
+          false
+
+
+        while (
+          !finished
+        ) {
+
+          await new Promise<void>(
+            (resolve) => {
+
+              window.setTimeout(
+                resolve,
+                750
+              )
+
+            }
+          )
+
+
+          const job =
+            await fetchWikiMemorySyncJob(
+              started.jobId
+            )
+
+
+          const globalPercent =
+            wikiCharacter ===
+              'All'
+              ? Math.min(
+                  99,
+                  Math.round(
+                    (
+                      (
+                        characterIndex *
+                        100
+                      ) +
+                      job.progress.percent
+                    ) /
+                    characters.length
+                  )
+                )
+              : job.progress.percent
+
+
+          setWikiSyncProgress({
+            ...job.progress,
+
+            percent:
+              globalPercent,
+
+            current:
+              wikiCharacter ===
+                'All'
+                ? characterIndex +
+                  (
+                    job.progress.percent /
+                    100
+                  )
+                : job.progress.current,
+
+            total:
+              wikiCharacter ===
+                'All'
+                ? characters.length
+                : job.progress.total,
+
+            message:
+              wikiCharacter ===
+                'All'
+                ? `${character}: ${job.progress.message}`
+                : job.progress.message,
+          })
+
+
+          if (
+            job.status ===
+              'error'
+          ) {
+
+            throw new Error(
+              job.error ??
+              `Wiki sync failed for ${character}.`
             )
 
           }
-        )
 
 
-        const job =
-          await fetchWikiMemorySyncJob(
-            started.jobId
-          )
+          if (
+            job.status !==
+              'complete'
+          ) {
 
+            continue
 
-        setWikiSyncProgress(
-          job.progress
-        )
+          }
 
-
-        if (
-          job.status ===
-          'error'
-        ) {
-
-          throw new Error(
-            job.error ??
-            'Wiki sync failed.'
-          )
-
-        }
-
-
-        if (
-          job.status ===
-          'complete'
-        ) {
 
           finished =
             true
@@ -1761,21 +2134,252 @@ function MetadataCatalogPage() {
             job.result
           ) {
 
-            setWikiSyncResult(
-              job.result
-            )
+            if (
+              !aggregateMemory
+            ) {
+
+              aggregateMemory = {
+                ...job.result,
+
+                character:
+                  wikiCharacter ===
+                    'All'
+                    ? 'All'
+                    : job.result.character,
+              }
+
+            } else {
+
+              const current =
+                aggregateMemory as
+                  WikiSyncResult
+
+
+              aggregateMemory = {
+                character:
+                  current.character,
+
+                sourceUrl:
+                  current.sourceUrl,
+
+                fetchedAt:
+                  job.result.fetchedAt,
+
+                discovered:
+                  current.discovered +
+                  job.result.discovered,
+
+                created:
+                  current.created +
+                  job.result.created,
+
+                updated:
+                  current.updated +
+                  job.result.updated,
+
+                skipped:
+                  current.skipped +
+                  job.result.skipped,
+              }
+
+            }
 
           }
 
 
-          setSupplementalSyncResult(
+          if (
             job.supplementalResult
-          )
+          ) {
 
+            const result =
+              job.supplementalResult
+
+
+            if (
+              !aggregateSupplemental
+            ) {
+
+              aggregateSupplemental = {
+                ...result,
+
+                character:
+                  wikiCharacter ===
+                    'All'
+                    ? 'All'
+                    : result.character,
+
+                fallingForYou: {
+                  ...result.fallingForYou,
+                },
+
+                byYourSide: {
+                  ...result.byYourSide,
+                },
+              }
+
+            } else {
+
+              const current =
+                aggregateSupplemental as
+                  SupplementalSyncResult
+
+
+              aggregateSupplemental = {
+                character:
+                  current.character,
+
+                fetchedAt:
+                  result.fetchedAt,
+
+                fallingForYou: {
+                  discovered:
+                    current
+                      .fallingForYou
+                      .discovered +
+                    result
+                      .fallingForYou
+                      .discovered,
+
+                  created:
+                    current
+                      .fallingForYou
+                      .created +
+                    result
+                      .fallingForYou
+                      .created,
+
+                  enriched:
+                    current
+                      .fallingForYou
+                      .enriched +
+                    result
+                      .fallingForYou
+                      .enriched,
+
+                  existing:
+                    current
+                      .fallingForYou
+                      .existing +
+                    result
+                      .fallingForYou
+                      .existing,
+
+                  skipped:
+                    current
+                      .fallingForYou
+                      .skipped +
+                    result
+                      .fallingForYou
+                      .skipped,
+                },
+
+                byYourSide: {
+                  discovered:
+                    current
+                      .byYourSide
+                      .discovered +
+                    result
+                      .byYourSide
+                      .discovered,
+
+                  created:
+                    current
+                      .byYourSide
+                      .created +
+                    result
+                      .byYourSide
+                      .created,
+
+                  existingMemory:
+                    current
+                      .byYourSide
+                      .existingMemory +
+                    result
+                      .byYourSide
+                      .existingMemory,
+
+                  existingSupplemental:
+                    current
+                      .byYourSide
+                      .existingSupplemental +
+                    result
+                      .byYourSide
+                      .existingSupplemental,
+
+                  skipped:
+                    current
+                      .byYourSide
+                      .skipped +
+                    result
+                      .byYourSide
+                      .skipped,
+
+                  linkedMemories:
+                    current
+                      .byYourSide
+                      .linkedMemories +
+                    result
+                      .byYourSide
+                      .linkedMemories,
+                },
+
+                totalCreated:
+                  current
+                    .totalCreated +
+                  result
+                    .totalCreated,
+
+                totalEnriched:
+                  current
+                    .totalEnriched +
+                  result
+                    .totalEnriched,
+
+                totalLinkedMemories:
+                  current
+                    .totalLinkedMemories +
+                  result
+                    .totalLinkedMemories,
+              }
+
+            }
+
+          }
 
         }
 
       }
+
+
+      setWikiSyncResult(
+        aggregateMemory
+      )
+
+
+      setSupplementalSyncResult(
+        aggregateSupplemental
+      )
+
+
+      setWikiSyncProgress({
+        phase:
+          'complete',
+
+        current:
+          characters.length,
+
+        total:
+          characters.length,
+
+        percent:
+          100,
+
+        message:
+          wikiCharacter ===
+            'All'
+            ? 'Complete: all five characters synced.'
+            : `Complete: ${wikiCharacter} synced.`,
+      })
 
 
       await loadCatalog()
@@ -1805,7 +2409,6 @@ function MetadataCatalogPage() {
   }
 
 
-
   async function syncPhoneMetadata() {
 
     try {
@@ -1820,14 +2423,123 @@ function MetadataCatalogPage() {
       )
 
 
-      const data =
-        await syncPhoneCatalog(
-          wikiCharacter
+      if (
+        !(await ensureWikiPagesFresh())
+      ) {
+
+        setPhonePipelineError(
+          'Phone sync paused because one or more wiki source pages are still more than 24 hours out of date.'
         )
 
 
+        return
+
+      }
+
+
+      const characters =
+        wikiCharacter ===
+          'All'
+          ? WIKI_SYNC_CHARACTERS
+          : [
+              wikiCharacter,
+            ]
+
+
+      let aggregate:
+        WikiPhoneSyncResult | null =
+        null
+
+
+      for (
+        const character
+        of characters
+      ) {
+
+        const data =
+          await syncPhoneCatalog(
+            character
+          )
+
+
+        if (
+          !aggregate
+        ) {
+
+          aggregate = {
+            ...data,
+
+            character:
+              wikiCharacter ===
+                'All'
+                ? 'All'
+                : data.character,
+
+            sources: {
+              ...data.sources,
+            },
+          }
+
+        } else {
+
+          const current =
+            aggregate as
+              WikiPhoneSyncResult
+
+
+          aggregate = {
+            character:
+              current.character,
+
+            fetchedAt:
+              data.fetchedAt,
+
+            discovered:
+              current.discovered +
+              data.discovered,
+
+            created:
+              current.created +
+              data.created,
+
+            updated:
+              current.updated +
+              data.updated,
+
+            skipped:
+              current.skipped +
+              data.skipped,
+
+            voiceCalls:
+              current.voiceCalls +
+              data.voiceCalls,
+
+            videoCalls:
+              current.videoCalls +
+              data.videoCalls,
+
+            sources: {
+              wikiGG:
+                current.sources.wikiGG +
+                data.sources.wikiGG,
+
+              ladsCalls:
+                current.sources.ladsCalls +
+                data.sources.ladsCalls,
+
+              ladsCategories:
+                current.sources.ladsCategories +
+                data.sources.ladsCategories,
+            },
+          }
+
+        }
+
+      }
+
+
       setPhonePipelineResult(
-        data
+        aggregate
       )
 
 
@@ -1856,8 +2568,6 @@ function MetadataCatalogPage() {
     }
 
   }
-
-
 
 
 
@@ -3584,6 +4294,15 @@ function MetadataCatalogPage() {
           phonePipelineError={
             phonePipelineError
           }
+          wikiCacheFreshness={
+            wikiCacheFreshness
+          }
+          wikiCacheLoading={
+            wikiCacheLoading
+          }
+          wikiCacheError={
+            wikiCacheError
+          }
           setWikiCharacter={
             setWikiCharacter
           }
@@ -3604,6 +4323,9 @@ function MetadataCatalogPage() {
           }
           onPhoneSync={() =>
             void syncPhoneMetadata()
+          }
+          onRefreshCache={() =>
+            void refreshWikiCacheFreshness()
           }
         />
 

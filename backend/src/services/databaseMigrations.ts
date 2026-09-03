@@ -13,7 +13,7 @@ import {
 
 
 export const applicationDatabaseSchemaVersion =
-  1
+  2
 
 
 export const catalogDatabaseSchemaVersion =
@@ -464,6 +464,36 @@ function applicationMigrationV1(
 }
 
 
+
+function applicationMigrationV2(
+  database: DatabaseSync
+) {
+
+  database.exec(`
+    BEGIN IMMEDIATE;
+
+    CREATE TABLE IF NOT EXISTS archive_offline_event (
+
+      event_id TEXT PRIMARY KEY,
+
+      processed_at TEXT NOT NULL
+    );
+
+
+    CREATE INDEX IF NOT EXISTS
+      idx_archive_offline_event_processed_at
+    ON archive_offline_event(
+      processed_at
+    );
+
+
+    PRAGMA user_version = 2;
+    COMMIT;
+  `)
+
+}
+
+
 function getTableSql(
   database: DatabaseSync,
   tableName: string
@@ -908,6 +938,17 @@ const applicationMigrations:
 
     run:
       applicationMigrationV1,
+  },
+
+  {
+    version:
+      2,
+
+    name:
+      'Add idempotent offline playback event ledger',
+
+    run:
+      applicationMigrationV2,
   },
 
 ]

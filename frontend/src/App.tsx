@@ -412,6 +412,952 @@ async function requestBodyText(
 }
 
 
+type MobileArchiveState = {
+  category: string
+  relativePath: string
+  favorite: boolean
+  rating: number | null
+  playCount: number
+  lastWatched: string | null
+  progressSeconds: number
+  durationSeconds: number | null
+  completed: boolean
+  totalWatchSeconds: number
+}
+
+
+type OfflinePlaybackEvent = {
+  eventId: string
+  category: string
+  relativePath: string
+  occurredAt: string
+  progressSeconds: number
+  durationSeconds: number | null
+  watchedSecondsDelta: number
+  playCountDelta: number
+  completed: boolean
+}
+
+
+type OfflinePlaybackSyncResult = {
+  processedEventIds: string[]
+  duplicateEventIds: string[]
+  states: MobileArchiveState[]
+}
+
+
+const offlinePlaybackQueueKey =
+  'deepspaceArchiveOfflinePlaybackQueue:v1'
+
+
+const archiveSnapshotPrefix =
+  'deepspaceArchiveArchiveState:v1:'
+
+
+function archiveSnapshotKey(
+  category: string,
+  relativePath: string
+) {
+
+  return (
+    archiveSnapshotPrefix +
+    encodeURIComponent(
+      category
+    ) +
+    ':' +
+    encodeURIComponent(
+      relativePath
+    )
+  )
+
+}
+
+
+function blankArchiveState(
+  category: string,
+  relativePath: string
+): MobileArchiveState {
+
+  return {
+    category,
+    relativePath,
+    favorite:
+      false,
+    rating:
+      null,
+    playCount:
+      0,
+    lastWatched:
+      null,
+    progressSeconds:
+      0,
+    durationSeconds:
+      null,
+    completed:
+      false,
+    totalWatchSeconds:
+      0,
+  }
+
+}
+
+
+function readArchiveSnapshot(
+  category: string,
+  relativePath: string
+) {
+
+  try {
+
+    const raw =
+      window.localStorage.getItem(
+        archiveSnapshotKey(
+          category,
+          relativePath
+        )
+      )
+
+
+    if (
+      !raw
+    ) {
+
+      return blankArchiveState(
+        category,
+        relativePath
+      )
+
+    }
+
+
+    return JSON.parse(
+      raw
+    ) as MobileArchiveState
+
+  } catch {
+
+    return blankArchiveState(
+      category,
+      relativePath
+    )
+
+  }
+
+}
+
+
+function writeArchiveSnapshot(
+  state: MobileArchiveState
+) {
+
+  try {
+
+    window.localStorage.setItem(
+      archiveSnapshotKey(
+        state.category,
+        state.relativePath
+      ),
+      JSON.stringify(
+        state
+      )
+    )
+
+  } catch {
+    // Resume/stat snapshots are best-effort.
+  }
+
+}
+
+
+function readOfflinePlaybackQueue() {
+
+  try {
+
+    const raw =
+      window.localStorage.getItem(
+        offlinePlaybackQueueKey
+      )
+
+
+    if (
+      !raw
+    ) {
+
+      return [] as
+        OfflinePlaybackEvent[]
+
+    }
+
+
+    const parsed =
+      JSON.parse(
+        raw
+      )
+
+
+    return Array.isArray(
+      parsed
+    )
+      ? parsed as
+          OfflinePlaybackEvent[]
+      : []
+
+  } catch {
+
+    return [] as
+      OfflinePlaybackEvent[]
+
+  }
+
+}
+
+
+function writeOfflinePlaybackQueue(
+  events:
+    OfflinePlaybackEvent[]
+) {
+
+  try {
+
+    if (
+      events.length ===
+        0
+    ) {
+
+      window.localStorage.removeItem(
+        offlinePlaybackQueueKey
+      )
+
+
+      return
+
+    }
+
+
+    window.localStorage.setItem(
+      offlinePlaybackQueueKey,
+      JSON.stringify(
+        events
+      )
+    )
+
+  } catch (error) {
+
+    console.error(
+      'Unable to persist offline playback queue:',
+      error
+    )
+
+  }
+
+}
+
+
+function createOfflineEventId() {
+
+  try {
+
+    return crypto.randomUUID()
+
+  } catch {
+
+    return (
+      `offline-${Date.now()}-` +
+      Math.random()
+        .toString(
+          36
+        )
+        .slice(
+          2
+        )
+    )
+
+  }
+
+}
+
+
+function applyOfflinePlaybackEvent(
+  state:
+    MobileArchiveState,
+  event:
+    OfflinePlaybackEvent
+): MobileArchiveState {
+
+  return {
+    ...state,
+
+    progressSeconds:
+      event.progressSeconds,
+
+    durationSeconds:
+      event.durationSeconds ??
+      state.durationSeconds,
+
+    completed:
+      event.completed,
+
+    playCount:
+      state.playCount +
+      event.playCountDelta,
+
+    totalWatchSeconds:
+      state.totalWatchSeconds +
+      event.watchedSecondsDelta,
+
+    lastWatched:
+      event.occurredAt,
+  }
+
+}
+
+
+function createPlaybackEvent(
+  pathname: string,
+  bodyText: string
+) {
+
+  let body:
+    Record<
+      string,
+      unknown
+    >
+
+
+  try {
+
+    body =
+      JSON.parse(
+        bodyText ||
+        '{}'
+      ) as Record<
+        string,
+        unknown
+      >
+
+  } catch {
+
+    return null
+
+  }
+
+
+  if (
+    typeof body.category !==
+      'string' ||
+    typeof body.relativePath !==
+      'string'
+  ) {
+
+    return null
+
+  }
+
+
+  const category =
+    body.category
+
+
+  const relativePath =
+    body.relativePath
+
+
+  const current =
+    readArchiveSnapshot(
+      category,
+      relativePath
+    )
+
+
+  const occurredAt =
+    new Date()
+      .toISOString()
+
+
+  if (
+    pathname ===
+      '/api/archive/restart'
+  ) {
+
+    const event:
+      OfflinePlaybackEvent = {
+      eventId:
+        createOfflineEventId(),
+
+      category,
+      relativePath,
+      occurredAt,
+
+      progressSeconds:
+        0,
+
+      durationSeconds:
+        current.durationSeconds,
+
+      watchedSecondsDelta:
+        0,
+
+      playCountDelta:
+        0,
+
+      completed:
+        false,
+    }
+
+
+    return {
+      event,
+
+      optimisticState:
+        applyOfflinePlaybackEvent(
+          current,
+          event
+        ),
+    }
+
+  }
+
+
+  if (
+    pathname !==
+      '/api/archive/progress'
+  ) {
+
+    return null
+
+  }
+
+
+  const progressSeconds =
+    Number(
+      body.progressSeconds
+    )
+
+
+  const durationSeconds =
+    body.durationSeconds ===
+      null ||
+    body.durationSeconds ===
+      undefined
+      ? null
+      : Number(
+          body.durationSeconds
+        )
+
+
+  const watchedSecondsDelta =
+    Math.max(
+      0,
+      Number(
+        body.watchedSeconds ??
+        0
+      ) ||
+      0
+    )
+
+
+  if (
+    !Number.isFinite(
+      progressSeconds
+    ) ||
+    progressSeconds <
+      0 ||
+    (
+      durationSeconds !==
+        null &&
+      (
+        !Number.isFinite(
+          durationSeconds
+        ) ||
+        durationSeconds <
+          0
+      )
+    )
+  ) {
+
+    return null
+
+  }
+
+
+  const completed =
+    durationSeconds !==
+      null &&
+    durationSeconds >
+      0
+      ? progressSeconds /
+          durationSeconds >=
+        0.95
+      : false
+
+
+  const playCountDelta =
+    completed &&
+    !current.completed
+      ? 1
+      : 0
+
+
+  const event:
+    OfflinePlaybackEvent = {
+    eventId:
+      createOfflineEventId(),
+
+    category,
+    relativePath,
+    occurredAt,
+    progressSeconds,
+    durationSeconds,
+    watchedSecondsDelta,
+    playCountDelta,
+    completed,
+  }
+
+
+  return {
+    event,
+
+    optimisticState:
+      applyOfflinePlaybackEvent(
+        current,
+        event
+      ),
+  }
+
+}
+
+
+function enqueueOfflinePlaybackEvent(
+  event:
+    OfflinePlaybackEvent,
+  optimisticState:
+    MobileArchiveState
+) {
+
+  const queue =
+    readOfflinePlaybackQueue()
+
+
+  queue.push(
+    event
+  )
+
+
+  writeOfflinePlaybackQueue(
+    queue
+  )
+
+
+  writeArchiveSnapshot(
+    optimisticState
+  )
+
+}
+
+
+function responseFromArchiveState(
+  state:
+    MobileArchiveState,
+  offline:
+    boolean
+) {
+
+  return new Response(
+    JSON.stringify(
+      state
+    ),
+    {
+      status:
+        200,
+
+      headers: {
+        'Content-Type':
+          'application/json',
+
+        [offlineCacheHeader]:
+          offline
+            ? '1'
+            : '0',
+      },
+    }
+  )
+
+}
+
+
+function overlayQueuedEvents(
+  state:
+    MobileArchiveState
+) {
+
+  let next =
+    state
+
+
+  for (
+    const event
+    of readOfflinePlaybackQueue()
+  ) {
+
+    if (
+      event.category ===
+        state.category &&
+      event.relativePath ===
+        state.relativePath
+    ) {
+
+      next =
+        applyOfflinePlaybackEvent(
+          next,
+          event
+        )
+
+    }
+
+  }
+
+
+  writeArchiveSnapshot(
+    next
+  )
+
+
+  return next
+
+}
+
+
+async function overlayArchiveGetResponse(
+  requestUrl:
+    URL,
+  response:
+    Response
+) {
+
+  if (
+    !response.ok
+  ) {
+
+    return response
+
+  }
+
+
+  if (
+    requestUrl.pathname ===
+      '/api/archive/state'
+  ) {
+
+    try {
+
+      const state =
+        await response
+          .clone()
+          .json() as
+            MobileArchiveState
+
+
+      const next =
+        overlayQueuedEvents(
+          state
+        )
+
+
+      return new Response(
+        JSON.stringify(
+          next
+        ),
+        {
+          status:
+            response.status,
+
+          statusText:
+            response.statusText,
+
+          headers:
+            response.headers,
+        }
+      )
+
+    } catch {
+
+      return response
+
+    }
+
+  }
+
+
+  if (
+    requestUrl.pathname ===
+      '/api/archive/states'
+  ) {
+
+    try {
+
+      const payload =
+        await response
+          .clone()
+          .json() as {
+            count: number
+            items: MobileArchiveState[]
+          }
+
+
+      const byIdentity =
+        new Map<
+          string,
+          MobileArchiveState
+        >()
+
+
+      for (
+        const state
+        of payload.items
+      ) {
+
+        const next =
+          overlayQueuedEvents(
+            state
+          )
+
+
+        byIdentity.set(
+          `${state.category}\u0000${state.relativePath}`,
+          next
+        )
+
+      }
+
+
+      for (
+        const event
+        of readOfflinePlaybackQueue()
+      ) {
+
+        const key =
+          `${event.category}\u0000${event.relativePath}`
+
+
+        if (
+          byIdentity.has(
+            key
+          )
+        ) {
+
+          continue
+
+        }
+
+
+        const next =
+          overlayQueuedEvents(
+            blankArchiveState(
+              event.category,
+              event.relativePath
+            )
+          )
+
+
+        byIdentity.set(
+          key,
+          next
+        )
+
+      }
+
+
+      const items =
+        [
+          ...byIdentity.values(),
+        ]
+
+
+      return new Response(
+        JSON.stringify({
+          count:
+            items.length,
+
+          items,
+        }),
+        {
+          status:
+            response.status,
+
+          statusText:
+            response.statusText,
+
+          headers:
+            response.headers,
+        }
+      )
+
+    } catch {
+
+      return response
+
+    }
+
+  }
+
+
+  if (
+    requestUrl.pathname ===
+      '/api/archive/stats'
+  ) {
+
+    try {
+
+      const payload =
+        await response
+          .clone()
+          .json() as {
+            totalCompletedWatches: number
+            totalWatchSeconds: number
+            categoryStats:
+              Array<{
+                category: string
+                completedWatches: number
+                watchSeconds: number
+                favorites: number
+                ratedItems: number
+                averageRating: number | null
+              }>
+            [key: string]: unknown
+          }
+
+
+      const queue =
+        readOfflinePlaybackQueue()
+
+
+      const playDelta =
+        queue.reduce(
+          (
+            total,
+            event
+          ) =>
+            total +
+            event.playCountDelta,
+          0
+        )
+
+
+      const watchDelta =
+        queue.reduce(
+          (
+            total,
+            event
+          ) =>
+            total +
+            event.watchedSecondsDelta,
+          0
+        )
+
+
+      const categoryStats =
+        payload.categoryStats.map(
+          (row) => ({
+            ...row,
+          })
+        )
+
+
+      for (
+        const event
+        of queue
+      ) {
+
+        let row =
+          categoryStats.find(
+            (item) =>
+              item.category ===
+              event.category
+          )
+
+
+        if (
+          !row
+        ) {
+
+          row = {
+            category:
+              event.category,
+
+            completedWatches:
+              0,
+
+            watchSeconds:
+              0,
+
+            favorites:
+              0,
+
+            ratedItems:
+              0,
+
+            averageRating:
+              null,
+          }
+
+
+          categoryStats.push(
+            row
+          )
+
+        }
+
+
+        row.completedWatches +=
+          event.playCountDelta
+
+
+        row.watchSeconds +=
+          event.watchedSecondsDelta
+
+      }
+
+
+      return new Response(
+        JSON.stringify({
+          ...payload,
+
+          totalCompletedWatches:
+            payload.totalCompletedWatches +
+            playDelta,
+
+          totalWatchSeconds:
+            payload.totalWatchSeconds +
+            watchDelta,
+
+          categoryStats,
+        }),
+        {
+          status:
+            response.status,
+
+          statusText:
+            response.statusText,
+
+          headers:
+            response.headers,
+        }
+      )
+
+    } catch {
+
+      return response
+
+    }
+
+  }
+
+
+  return response
+
+}
+
+
 function initializeMobileRuntime() {
 
   if (
@@ -456,6 +1402,179 @@ function initializeMobileRuntime() {
     window.fetch.bind(
       window
     )
+
+
+  let flushingOfflinePlayback =
+    false
+
+
+  async function sendArchiveProxy(
+    targetPath:
+      string,
+    method:
+      string,
+    body:
+      string
+  ) {
+
+    const proxyQuery =
+      new URLSearchParams({
+        path:
+          targetPath,
+
+        method,
+
+        body,
+      })
+
+
+    return originalFetch(
+      `/_dsa/archive-write?${proxyQuery}`,
+      {
+        method:
+          'GET',
+
+        cache:
+          'no-store',
+
+        headers: {
+          Accept:
+            'application/json',
+        },
+      }
+    )
+
+  }
+
+
+  async function flushOfflinePlaybackQueue() {
+
+    if (
+      flushingOfflinePlayback
+    ) {
+
+      return
+
+    }
+
+
+    const queue =
+      readOfflinePlaybackQueue()
+
+
+    if (
+      queue.length ===
+        0
+    ) {
+
+      return
+
+    }
+
+
+    flushingOfflinePlayback =
+      true
+
+
+    try {
+
+      const batch =
+        queue.slice(
+          0,
+          200
+        )
+
+
+      const response =
+        await sendArchiveProxy(
+          '/api/archive/offline-sync',
+          'POST',
+          JSON.stringify({
+            events:
+              batch,
+          })
+        )
+
+
+      if (
+        !response.ok
+      ) {
+
+        return
+
+      }
+
+
+      const result =
+        await response.json() as
+          OfflinePlaybackSyncResult
+
+
+      const acknowledged =
+        new Set([
+          ...result.processedEventIds,
+          ...result.duplicateEventIds,
+        ])
+
+
+      const currentQueue =
+        readOfflinePlaybackQueue()
+
+
+      writeOfflinePlaybackQueue(
+        currentQueue.filter(
+          (event) =>
+            !acknowledged.has(
+              event.eventId
+            )
+        )
+      )
+
+
+      for (
+        const state
+        of result.states
+      ) {
+
+        writeArchiveSnapshot(
+          state
+        )
+
+      }
+
+
+      if (
+        readOfflinePlaybackQueue()
+          .length >
+          0
+      ) {
+
+        window.setTimeout(
+          () => {
+
+            void flushOfflinePlaybackQueue()
+
+          },
+          50
+        )
+
+      }
+
+    } catch (error) {
+
+      console.error(
+        'Unable to sync offline playback events:',
+        error
+      )
+
+    } finally {
+
+      flushingOfflinePlayback =
+        false
+
+    }
+
+  }
 
 
   window.fetch =
@@ -567,10 +1686,37 @@ function initializeMobileRuntime() {
             '/api/system-info'
         ) {
 
-          publishMobileConnection(
+          const connected =
             !offline &&
             response.status !==
               503
+
+
+          publishMobileConnection(
+            connected
+          )
+
+
+          if (
+            connected
+          ) {
+
+            void flushOfflinePlaybackQueue()
+
+          }
+
+        }
+
+
+        if (
+          requestUrl.pathname.startsWith(
+            '/api/archive/'
+          )
+        ) {
+
+          return overlayArchiveGetResponse(
+            requestUrl,
+            response
           )
 
         }
@@ -581,14 +1727,6 @@ function initializeMobileRuntime() {
       }
 
 
-      /*
-       * Archive state writes are intentionally sent through a local GET
-       * endpoint that Android intercepts and turns into the real NAS POST.
-       *
-       * WebView interception happens on its network worker rather than the
-       * JavaScript-interface thread, which makes progress/completion writes
-       * reliable while the app is playing media.
-       */
       if (
         requestUrl.pathname.startsWith(
           '/api/archive/'
@@ -602,32 +1740,116 @@ function initializeMobileRuntime() {
           )
 
 
-        const proxyQuery =
-          new URLSearchParams({
-            path:
-              requestUrl.pathname +
-              requestUrl.search,
+        /*
+         * Progress/restart writes from the bundled Android app use the
+         * idempotent offline-event endpoint even while online. If the NAS
+         * disappears between play and pause, the exact same event can be
+         * queued and retried later without double-counting watch time or
+         * completed plays.
+         */
+        const playbackWrite =
+          createPlaybackEvent(
+            requestUrl.pathname,
+            body
+          )
 
-            method,
 
-            body,
-          })
+        if (
+          playbackWrite
+        ) {
+
+          const response =
+            await sendArchiveProxy(
+              '/api/archive/offline-sync',
+              'POST',
+              JSON.stringify({
+                events: [
+                  playbackWrite.event,
+                ],
+              })
+            )
 
 
-        return originalFetch(
-          `/_dsa/archive-write?${proxyQuery}`,
-          {
-            method:
-              'GET',
+          const offline =
+            response.status ===
+              503 ||
+            response.headers.get(
+              offlineCacheHeader
+            ) ===
+              '1'
 
-            cache:
-              'no-store',
 
-            headers: {
-              Accept:
-                'application/json',
-            },
+          if (
+            offline
+          ) {
+
+            enqueueOfflinePlaybackEvent(
+              playbackWrite.event,
+              playbackWrite.optimisticState
+            )
+
+
+            publishMobileConnection(
+              false
+            )
+
+
+            return responseFromArchiveState(
+              playbackWrite.optimisticState,
+              true
+            )
+
           }
+
+
+          if (
+            !response.ok
+          ) {
+
+            return response
+
+          }
+
+
+          const result =
+            await response.json() as
+              OfflinePlaybackSyncResult
+
+
+          const state =
+            result.states.find(
+              (item) =>
+                item.category ===
+                  playbackWrite.event.category &&
+                item.relativePath ===
+                  playbackWrite.event.relativePath
+            ) ??
+            playbackWrite.optimisticState
+
+
+          writeArchiveSnapshot(
+            state
+          )
+
+
+          publishMobileConnection(
+            true
+          )
+
+
+          return responseFromArchiveState(
+            state,
+            false
+          )
+
+        }
+
+
+        return sendArchiveProxy(
+          requestUrl.pathname +
+          requestUrl.search,
+          method,
+          body
         )
 
       }

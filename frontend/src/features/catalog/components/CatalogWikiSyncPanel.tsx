@@ -1,5 +1,6 @@
 import type {
   SupplementalSyncResult,
+  WikiCacheFreshnessResult,
   WikiPhoneSyncResult,
   WikiPreviewResponse,
   WikiSyncProgress,
@@ -18,6 +19,9 @@ type Props = {
   supplementalSyncResult: SupplementalSyncResult | null
   phonePipelineResult: WikiPhoneSyncResult | null
   phonePipelineError: string | null
+  wikiCacheFreshness: WikiCacheFreshnessResult | null
+  wikiCacheLoading: boolean
+  wikiCacheError: string
   setWikiCharacter: (value: string) => void
   setWikiPreview: (value: WikiPreviewResponse | null) => void
   setWikiSyncResult: (value: WikiSyncResult | null) => void
@@ -25,6 +29,7 @@ type Props = {
   onPreview: () => void
   onSync: () => void
   onPhoneSync: () => void
+  onRefreshCache: () => void
 }
 
 
@@ -39,6 +44,9 @@ function CatalogWikiSyncPanel({
   supplementalSyncResult,
   phonePipelineResult,
   phonePipelineError,
+  wikiCacheFreshness,
+  wikiCacheLoading,
+  wikiCacheError,
   setWikiCharacter,
   setWikiPreview,
   setWikiSyncResult,
@@ -46,6 +54,7 @@ function CatalogWikiSyncPanel({
   onPreview,
   onSync,
   onPhoneSync,
+  onRefreshCache,
 }: Props) {
 
   return (
@@ -104,6 +113,10 @@ function CatalogWikiSyncPanel({
 
         }}
       >
+        <option value="All">
+          All Characters
+        </option>
+
         <option value="Xavier">
           Xavier
         </option>
@@ -176,6 +189,156 @@ function CatalogWikiSyncPanel({
       </button>
 
     </div>
+
+  </div>
+
+
+  <div className="catalog-wiki-cache-status">
+
+    <div className="catalog-wiki-cache-status-heading">
+
+      <div>
+
+        <strong>
+          Wiki Page Cache
+        </strong>
+
+        <span>
+          Source pages should be generated within the last 24 hours.
+          Stale pages are automatically purged when possible.
+        </span>
+
+      </div>
+
+
+      <button
+        type="button"
+        className="catalog-secondary-button"
+        disabled={
+          wikiCacheLoading
+        }
+        onClick={() =>
+          onRefreshCache()
+        }
+      >
+        {wikiCacheLoading
+          ? 'Checking...'
+          : 'Check Page Cache'}
+      </button>
+
+    </div>
+
+
+    {wikiCacheError && (
+
+      <div className="settings-status-message settings-status-error">
+        {wikiCacheError}
+      </div>
+
+    )}
+
+
+    {wikiCacheFreshness &&
+    !wikiCacheFreshness.needsAttention && (
+
+      <div className="catalog-wiki-cache-fresh">
+        All timestamped wiki.gg source pages are within the
+        24-hour freshness window.
+      </div>
+
+    )}
+
+
+    {wikiCacheFreshness?.needsAttention && (
+
+      <div className="catalog-wiki-cache-stale">
+
+        <strong>
+          Page cache needs attention
+        </strong>
+
+        <p>
+          These pages were still more than 24 hours old after
+          DeepSpace Archive attempted an automatic purge. Open the
+          purge link for each page, purge it on the wiki, then use
+          Check Page Cache again.
+        </p>
+
+        <div className="catalog-wiki-cache-links">
+
+          {wikiCacheFreshness.pages
+            .filter(
+              (page) =>
+                page.fresh !==
+                  true ||
+                page.error !==
+                  null ||
+                (
+                  page.autoPurgeAttempted &&
+                  page.autoPurgeSucceeded ===
+                    false
+                )
+            )
+            .map(
+              (page) => (
+
+                <div
+                  key={
+                    page.id
+                  }
+                  className="catalog-wiki-cache-link-row"
+                >
+
+                  <div>
+
+                    <strong>
+                      {page.label}
+                    </strong>
+
+                    <span>
+                      {page.ageHours !==
+                        null
+                        ? `${page.ageHours} hours old`
+                        : 'Freshness could not be confirmed'}
+                    </span>
+
+                  </div>
+
+
+                  <div>
+
+                    <a
+                      href={
+                        page.sourceUrl
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open Page
+                    </a>
+
+                    <a
+                      href={
+                        page.purgeUrl
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Purge Page
+                    </a>
+
+                  </div>
+
+                </div>
+
+              )
+            )}
+
+        </div>
+
+      </div>
+
+    )}
 
   </div>
 

@@ -29746,3 +29746,119 @@ html[data-dsa-mobile="true"]
   background:
     transparent;
 }
+
+
+/* ========================================
+   METADATA CATALOG — WIKI CACHE FRESHNESS
+======================================== */
+
+.catalog-wiki-cache-status {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.catalog-wiki-cache-status-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.catalog-wiki-cache-status-heading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.catalog-wiki-cache-status-heading span {
+  opacity: 0.72;
+  line-height: 1.45;
+}
+
+.catalog-wiki-cache-fresh {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(76, 175, 80, 0.11);
+  border: 1px solid rgba(116, 230, 146, 0.2);
+}
+
+.catalog-wiki-cache-stale {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(184, 121, 31, 0.12);
+  border: 1px solid rgba(244, 188, 92, 0.3);
+}
+
+.catalog-wiki-cache-stale p {
+  margin: 8px 0 14px;
+  opacity: 0.82;
+  line-height: 1.5;
+}
+
+.catalog-wiki-cache-links {
+  display: grid;
+  gap: 9px;
+}
+
+.catalog-wiki-cache-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.catalog-wiki-cache-link-row > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.catalog-wiki-cache-link-row > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.catalog-wiki-cache-link-row span {
+  font-size: 0.84rem;
+  opacity: 0.68;
+}
+
+.catalog-wiki-cache-link-row a {
+  color: inherit;
+  text-decoration: none;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.catalog-wiki-cache-link-row a:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 700px) {
+  .catalog-wiki-cache-status-heading,
+  .catalog-wiki-cache-link-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .catalog-wiki-cache-status-heading button {
+    width: 100%;
+  }
+
+  .catalog-wiki-cache-link-row > div:last-child {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .catalog-wiki-cache-link-row a {
+    text-align: center;
+  }
+}

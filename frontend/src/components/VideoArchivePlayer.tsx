@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -326,105 +325,6 @@ function VideoArchivePlayer({
       'undefined' &&
     Boolean(
       window.DeepSpaceArchiveMobile
-    )
-
-
-  /*
-   * Pick the Android playback source once per archive item.
-   *
-   * - Existing download: use the app's loopback HTTP media server.
-   * - Not downloaded: stream directly from the NAS, just like the browser.
-   *
-   * The memo depends only on the selected item, so a download finishing
-   * while playback is active does not replace the current <video src>.
-   */
-  const mobilePlaybackUrl =
-    useMemo(
-      () => {
-
-        if (
-          !relativePath ||
-          !window.DeepSpaceArchiveMobile
-        ) {
-
-          return ''
-
-        }
-
-
-        const bridge =
-          window.DeepSpaceArchiveMobile
-
-
-        try {
-
-          if (
-            bridge.isDownloaded(
-              relativePath
-            )
-          ) {
-
-            const localStreamUrl =
-              bridge
-                .getLocalMediaStreamUrl?.(
-                  relativePath
-                ) ??
-              ''
-
-
-            if (
-              localStreamUrl
-            ) {
-
-              return localStreamUrl
-
-            }
-
-          }
-
-
-          const serverUrl =
-            bridge
-              .getServerUrl?.()
-              ?.replace(
-                /\/+$/,
-                ''
-              ) ??
-            ''
-
-
-          if (
-            serverUrl
-          ) {
-
-            const query =
-              new URLSearchParams({
-                relativePath,
-              })
-
-
-            return (
-              `${serverUrl}/api/media?${query}`
-            )
-
-          }
-
-        } catch (mediaSourceError) {
-
-          console.error(
-            'Unable to choose Android media source:',
-            mediaSourceError
-          )
-
-        }
-
-
-        return ''
-
-      },
-      [
-        relativePath,
-      ]
     )
 
 
@@ -2597,17 +2497,20 @@ useEffect(
 
 
   /*
-   * Keep a stable source URL in the Android app. The native WebView
-   * client chooses NAS streaming versus the downloaded file behind
-   * /api/media. Finishing a download therefore cannot replace <video src>
-   * and interrupt the video that is currently playing.
+   * Android always keeps the media element on the app-local /api/media
+   * URL. DeepSpaceArchiveWebViewClient handles that URL:
+   *
+   * - while connected, it proxies the request (including byte ranges)
+   *   to the NAS;
+   * - when the item is downloaded, it serves the Android file locally;
+   * - the <video src> itself never changes when a download completes.
+   *
+   * Keeping playback same-origin also avoids Android WebView blocking a
+   * direct HTTP NAS/127.0.0.1 URL from Capacitor's HTTPS app origin.
    */
   const mediaUrl =
     isMobileApp
-      ? (
-          mobilePlaybackUrl ||
-          streamedMediaUrl
-        )
+      ? streamedMediaUrl
       : (
           localMediaUrl ||
           streamedMediaUrl

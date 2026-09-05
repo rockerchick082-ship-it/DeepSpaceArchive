@@ -104,6 +104,8 @@ export type WikiPhonePreview = {
     WikiPhoneRecord[]
 
   total: number
+  duplicateSkipped: number
+  errors: string[]
 
   sources: {
     wikiGG: number
@@ -119,6 +121,8 @@ export type WikiPhoneSyncResult = {
   created: number
   updated: number
   skipped: number
+  duplicateSkipped: number
+  errors: string[]
 
   voiceCalls: number
   videoCalls: number
@@ -770,6 +774,11 @@ function parseWikiGGPhoneAll(
     >()
 
 
+  const duplicateErrors:
+    string[] =
+    []
+
+
   let recognizedTable =
     false
 
@@ -1063,16 +1072,44 @@ function parseWikiGGPhoneAll(
                 )
 
 
+              const category =
+                phoneCategory(
+                  kind
+                )
+
+
+              if (
+                records.has(
+                  sourceKey
+                )
+              ) {
+
+                const message =
+                  `Duplicate wiki.gg Phone / All row skipped: ${rowCharacter} · ${category} · ${canonicalName}. The first occurrence was kept and sync continued.`
+
+
+                duplicateErrors.push(
+                  message
+                )
+
+
+                console.error(
+                  message
+                )
+
+
+                return
+
+              }
+
+
               records.set(
                 sourceKey,
                 {
                   canonicalName,
                   character:
                     rowCharacter,
-                  category:
-                    phoneCategory(
-                      kind
-                    ),
+                  category,
                   releaseDate,
                   sourceName:
                     'wiki.gg',
@@ -1130,6 +1167,12 @@ function parseWikiGGPhoneAll(
           record.category ===
           'Phone Video'
       ),
+
+    duplicateSkipped:
+      duplicateErrors.length,
+
+    errors:
+      duplicateErrors,
   }
 
 }
@@ -1235,6 +1278,11 @@ export async function fetchWikiPhoneCalls(
     parsed.videoCalls.length
 
 
+  const sourceRows =
+    total +
+    parsed.duplicateSkipped
+
+
   if (
     total ===
     0
@@ -1255,9 +1303,13 @@ export async function fetchWikiPhoneCalls(
     videoCalls:
       parsed.videoCalls,
     total,
+    duplicateSkipped:
+      parsed.duplicateSkipped,
+    errors:
+      parsed.errors,
     sources: {
       wikiGG:
-        total,
+        sourceRows,
     },
   }
 
@@ -1289,7 +1341,7 @@ export async function syncWikiPhoneCalls(
 
 
   let skipped =
-    0
+    preview.duplicateSkipped
 
 
   for (
@@ -1427,13 +1479,20 @@ export async function syncWikiPhoneCalls(
       preview.fetchedAt,
 
     discovered:
-      records.length,
+      records.length +
+      preview.duplicateSkipped,
 
     created,
 
     updated,
 
     skipped,
+
+    duplicateSkipped:
+      preview.duplicateSkipped,
+
+    errors:
+      preview.errors,
 
     voiceCalls:
       preview.voiceCalls.length,

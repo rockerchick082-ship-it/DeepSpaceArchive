@@ -250,6 +250,8 @@ export type WikiPhoneSyncResult = {
   created: number
   updated: number
   skipped: number
+  duplicateSkipped: number
+  errors: string[]
 
   voiceCalls: number
   videoCalls: number

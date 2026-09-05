@@ -2510,6 +2510,15 @@ function MetadataCatalogPage() {
               current.skipped +
               data.skipped,
 
+            duplicateSkipped:
+              current.duplicateSkipped +
+              data.duplicateSkipped,
+
+            errors: [
+              ...current.errors,
+              ...data.errors,
+            ],
+
             voiceCalls:
               current.voiceCalls +
               data.voiceCalls,
@@ -2533,6 +2542,21 @@ function MetadataCatalogPage() {
       setPhonePipelineResult(
         aggregate
       )
+
+
+      if (
+        aggregate &&
+        aggregate.errors.length >
+          0
+      ) {
+
+        setPhonePipelineError(
+          aggregate.errors.join(
+            ' • '
+          )
+        )
+
+      }
 
 
       await loadCatalog()

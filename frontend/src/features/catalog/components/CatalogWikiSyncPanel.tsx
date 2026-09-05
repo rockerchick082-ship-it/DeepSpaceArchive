@@ -595,11 +595,28 @@ function CatalogWikiSyncPanel({
         {' refreshed · '}
         {phonePipelineResult.skipped}
         {' skipped'}
+        {phonePipelineResult.duplicateSkipped > 0 && (
+          <>
+            {' · '}
+            {phonePipelineResult.duplicateSkipped}
+            {' duplicate source '}
+            {phonePipelineResult.duplicateSkipped === 1
+              ? 'row'
+              : 'rows'}
+          </>
+        )}
       </span>
 
 
       <small>
-        Phone source: wiki.gg Phone / All ({phonePipelineResult.sources.wikiGG})
+        Phone source: wiki.gg Phone / All
+        {' · '}
+        {Number.isFinite(phonePipelineResult.sources?.wikiGG)
+          ? phonePipelineResult.sources.wikiGG
+          : Number.isFinite(phonePipelineResult.discovered)
+            ? phonePipelineResult.discovered
+            : 0}
+        {' records'}
       </small>
 
     </div>
@@ -610,7 +627,10 @@ function CatalogWikiSyncPanel({
   {phonePipelineError && (
 
     <div className="settings-status-message settings-status-error">
-      Phone sync: {phonePipelineError}
+      {phonePipelineResult
+        ? 'Phone sync completed with source errors: '
+        : 'Phone sync: '}
+      {phonePipelineError}
     </div>
 
   )}

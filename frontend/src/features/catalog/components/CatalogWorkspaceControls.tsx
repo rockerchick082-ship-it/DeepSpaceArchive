@@ -108,7 +108,7 @@ function CatalogWorkspaceControls({
           {' · '}
           All Memories → backup card metadata and artwork
           {' · '}
-          Phone → separate sync using wiki.gg + LADS Wiki backups
+          Phone → separate sync using wiki.gg Phone / All only
         </span>
 
       </div>

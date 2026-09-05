@@ -75,13 +75,13 @@ const pages:
 
     {
       id:
-        'phone-calls',
+        'phone-all',
 
       label:
-        'Phone Calls',
+        'Phone / All',
 
       sourceUrl:
-        'https://loveanddeepspace.wiki.gg/wiki/Phone_Calls',
+        'https://loveanddeepspace.wiki.gg/wiki/Phone/All',
     },
   ]
 

@@ -2522,14 +2522,6 @@ function MetadataCatalogPage() {
               wikiGG:
                 current.sources.wikiGG +
                 data.sources.wikiGG,
-
-              ladsCalls:
-                current.sources.ladsCalls +
-                data.sources.ladsCalls,
-
-              ladsCategories:
-                current.sources.ladsCategories +
-                data.sources.ladsCategories,
             },
           }
 

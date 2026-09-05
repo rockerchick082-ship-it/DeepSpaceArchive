@@ -256,8 +256,6 @@ export type WikiPhoneSyncResult = {
 
   sources: {
     wikiGG: number
-    ladsCalls: number
-    ladsCategories: number
   }
 }
 

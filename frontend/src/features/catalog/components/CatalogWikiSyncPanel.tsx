@@ -80,8 +80,7 @@ function CatalogWikiSyncPanel({
         and artwork; Falling for You and By
         Your Side define the archive structure.
         Phone Calls and Phone Videos sync
-        separately so a slow backup wiki cannot
-        block the main archive sync.
+        separately from wiki.gg Phone / All only.
       </p>
 
     </div>
@@ -600,13 +599,7 @@ function CatalogWikiSyncPanel({
 
 
       <small>
-        Phone sources:
-        {' '}
-        wiki.gg {phonePipelineResult.sources.wikiGG}
-        {' · '}
-        LADS Calls {phonePipelineResult.sources.ladsCalls}
-        {' · '}
-        LADS category backups {phonePipelineResult.sources.ladsCategories}
+        Phone source: wiki.gg Phone / All ({phonePipelineResult.sources.wikiGG})
       </small>
 
     </div>

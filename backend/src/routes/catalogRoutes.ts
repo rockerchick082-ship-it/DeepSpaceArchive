@@ -1357,7 +1357,7 @@ router.get(
           error instanceof
             Error
             ? error.message
-            : 'Unable to read phone calls from the configured phone wiki sources',
+            : 'Unable to read phone interactions from wiki.gg Phone / All',
       })
 
     }
@@ -1419,7 +1419,7 @@ router.post(
           error instanceof
             Error
             ? error.message
-            : 'Unable to sync phone calls from the configured phone wiki sources',
+            : 'Unable to sync phone interactions from wiki.gg Phone / All',
       })
 
     }

@@ -16,47 +16,32 @@ import type {
 
 /*
  * ========================================
- * PHONE METADATA SOURCES
+ * PHONE METADATA SOURCE
  * ========================================
  *
- * Primary:
- *   wiki.gg Phone Calls
+ * wiki.gg Phone / All is the ONLY source used by
+ * the phone metadata sync.
  *
- * Backup:
- *   lads.wiki Calls
+ * Source columns map to the archive as follows:
  *
- * Tertiary backup:
- *   lads.wiki Video Call category
- *   lads.wiki Voice Call category
+ *   Characters       -> character
+ *   Item             -> canonicalName
+ *   Interaction Type -> category
  *
- * The lads.wiki Calls page can contain both Voice
- * and Video calls, so the category pages are only
- * fetched if the Calls page fails to produce one
- * of the two call types for the selected character.
+ * Interaction Type mapping:
+ *
+ *   Voice Call -> Phone Call
+ *   Video Call -> Phone Video
+ *
+ * No secondary or fallback wiki is used.
  */
 
 const wikiBaseUrl =
   'https://loveanddeepspace.wiki.gg'
 
 
-const wikiPhoneCallsUrl =
-  `${wikiBaseUrl}/wiki/Phone_Calls`
-
-
-const ladsBaseUrl =
-  'https://lads.wiki'
-
-
-const ladsCallsUrl =
-  `${ladsBaseUrl}/wiki/Calls`
-
-
-const ladsVideoCategoryUrl =
-  `${ladsBaseUrl}/wiki/Category:Video_Call`
-
-
-const ladsVoiceCategoryUrl =
-  `${ladsBaseUrl}/wiki/Category:Voice_Call`
+const wikiPhoneAllUrl =
+  `${wikiBaseUrl}/wiki/Phone/All`
 
 
 const requestMinimumDelayMs =
@@ -77,8 +62,16 @@ type PhoneCallKind =
 
 
 type PhoneSourceName =
-  | 'wiki.gg'
-  | 'lads.wiki'
+  'wiki.gg'
+
+
+const companionNames = [
+  'Xavier',
+  'Zayne',
+  'Rafayel',
+  'Sylus',
+  'Caleb',
+] as const
 
 
 export type WikiPhoneRecord = {
@@ -114,8 +107,6 @@ export type WikiPhonePreview = {
 
   sources: {
     wikiGG: number
-    ladsCalls: number
-    ladsCategories: number
   }
 }
 
@@ -134,16 +125,15 @@ export type WikiPhoneSyncResult = {
 
   sources: {
     wikiGG: number
-    ladsCalls: number
-    ladsCategories: number
   }
 }
 
 
-type ParsedPhoneTitle = {
-  canonicalName: string
-  character: string
-  kind: PhoneCallKind
+type PhoneTableColumns = {
+  character: number
+  item: number
+  interactionType: number
+  releaseDate: number | null
 }
 
 
@@ -283,8 +273,8 @@ async function fetchPhoneSource(
 
     throw new Error(
       retryAfter
-        ? `Phone wiki rate limit reached. Retry after ${retryAfter}.`
-        : 'Phone wiki rate limit reached. Try again later.'
+        ? `wiki.gg phone rate limit reached. Retry after ${retryAfter}.`
+        : 'wiki.gg phone rate limit reached. Try again later.'
     )
 
   }
@@ -295,7 +285,7 @@ async function fetchPhoneSource(
   ) {
 
     throw new Error(
-      `Phone wiki request failed with status ${response.status} for ${url}.`
+      `wiki.gg Phone / All request failed with status ${response.status}.`
     )
 
   }
@@ -361,6 +351,18 @@ function normalizeSourceKey(
 }
 
 
+function escapeRegExp(
+  value: string
+) {
+
+  return value.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    '\\$&'
+  )
+
+}
+
+
 function stripCharacterPrefix(
   value: string,
   character: string
@@ -391,13 +393,15 @@ function stripCharacterPrefix(
 }
 
 
-function escapeRegExp(
+function stripCallSuffix(
   value: string
 ) {
 
-  return value.replace(
-    /[.*+?^${}()|[\]\\]/g,
-    '\\$&'
+  return cleanText(
+    value.replace(
+      /\s*\((?:Voice|Video|Phone)\s+Call\)\s*$/i,
+      ''
+    )
   )
 
 }
@@ -405,9 +409,7 @@ function escapeRegExp(
 
 function absoluteUrl(
   href:
-    string | undefined,
-  baseUrl:
-    string
+    string | undefined
 ) {
 
   if (
@@ -423,7 +425,7 @@ function absoluteUrl(
 
     return new URL(
       href,
-      baseUrl
+      wikiBaseUrl
     )
       .toString()
 
@@ -436,93 +438,104 @@ function absoluteUrl(
 }
 
 
-function pageTitleFromHref(
-  href: string,
-  baseUrl: string
-) {
-
-  try {
-
-    const url =
-      new URL(
-        href,
-        baseUrl
-      )
-
-
-    const wikiIndex =
-      url.pathname.indexOf(
-        '/wiki/'
-      )
-
-
-    if (
-      wikiIndex <
-      0
-    ) {
-
-      return ''
-
-    }
-
-
-    return decodeURIComponent(
-      url.pathname.slice(
-        wikiIndex +
-        '/wiki/'.length
-      )
-    )
-      .replace(
-        /_/g,
-        ' '
-      )
-      .replace(
-        /#.*$/,
-        ''
-      )
-
-  } catch {
-
-    return ''
-
-  }
-
-}
-
-
 function extractReleaseDate(
   value: string
 ) {
 
-  /*
-   * Use explicit release wording first so unrelated
-   * dates elsewhere on a wiki page are not selected.
-   */
-  const released =
-    value.match(
-      /\bReleased\s+(?:on\s+)?(20\d{2}-\d{2}-\d{2})\b/i
-    )
-
-
-  if (
-    released?.[1]
-  ) {
-
-    return released[1]
-
-  }
-
-
-  const generic =
+  const isoDate =
     value.match(
       /\b(20\d{2}-\d{2}-\d{2})\b/
     )
 
 
   return (
-    generic?.[1] ??
+    isoDate?.[1] ??
     null
   )
+
+}
+
+
+function canonicalCharacter(
+  value: string
+) {
+
+  const normalized =
+    normalizeText(
+      value
+    )
+
+
+  for (
+    const character
+    of companionNames
+  ) {
+
+    const characterPattern =
+      new RegExp(
+        `(?:^|\\s)${normalizeText(
+          character
+        )}(?:$|\\s)`
+      )
+
+
+    if (
+      characterPattern.test(
+        normalized
+      )
+    ) {
+
+      return character
+
+    }
+
+  }
+
+
+  return null
+
+}
+
+
+function phoneKindFromInteractionType(
+  value: string
+): PhoneCallKind | null {
+
+  const normalized =
+    normalizeText(
+      value
+    )
+
+
+  if (
+    normalized.includes(
+      'video call'
+    ) ||
+    normalized.includes(
+      'phone video'
+    )
+  ) {
+
+    return 'video'
+
+  }
+
+
+  if (
+    normalized.includes(
+      'voice call'
+    ) ||
+    normalized.includes(
+      'phone call'
+    )
+  ) {
+
+    return 'voice'
+
+  }
+
+
+  return null
 
 }
 
@@ -548,12 +561,6 @@ function phoneSourceKey(
     string
 ) {
 
-  /*
-   * The source key deliberately does NOT contain the
-   * wiki provider. A call discovered from a backup
-   * source represents the same catalog identity as a
-   * call discovered from wiki.gg.
-   */
   return (
     `phone:${kind}:${normalizeSourceKey(
       character
@@ -565,649 +572,194 @@ function phoneSourceKey(
 }
 
 
-function parseWikiGGPhoneTitle(
-  title: string
-): {
-  canonicalName: string
-  kind: PhoneCallKind
-} | null {
+function tableColumns(
+  headers:
+    string[]
+): PhoneTableColumns | null {
 
-  const match =
-    cleanText(
-      title
+  const normalizedHeaders =
+    headers.map(
+      normalizeText
     )
-      .match(
-        /^(.*?)\s*\((Voice|Video)\s+Call\)\s*$/i
-      )
 
 
-  if (
-    !match
-  ) {
-
-    return null
-
-  }
-
-
-  return {
-    canonicalName:
-      cleanText(
-        match[1]
-      ),
-
-    kind:
-      match[2]
-        .toLowerCase() ===
-        'voice'
-        ? 'voice'
-        : 'video',
-  }
-
-}
-
-
-function parseLadsPhoneTitle(
-  title: string
-): ParsedPhoneTitle | null {
-
-  /*
-   * lads.wiki / the historical Love and Deepspace
-   * wiki names call pages like:
-   *
-   *   The Bird (Rafayel Video Call)
-   *   <Title> (Caleb Voice Call)
-   *
-   * This gives us title, character, and call type
-   * directly from the page identity.
-   */
-  const match =
-    cleanText(
-      title
+  const findHeader = (
+    names:
+      string[]
+  ) =>
+    normalizedHeaders.findIndex(
+      (header) =>
+        names.includes(
+          header
+        )
     )
-      .match(
-        /^(.*?)\s*\((Xavier|Zayne|Rafayel|Sylus|Caleb)\s+(Voice|Video)\s+Call\)\s*$/i
-      )
-
-
-  if (
-    !match
-  ) {
-
-    return null
-
-  }
 
 
   const character =
-    match[2]
-      .slice(
-        0,
-        1
-      )
-      .toUpperCase() +
-    match[2]
-      .slice(
-        1
-      )
-      .toLowerCase()
+    findHeader([
+      'character',
+      'characters',
+    ])
+
+
+  const item =
+    findHeader([
+      'item',
+      'interaction name',
+    ])
+
+
+  const interactionType =
+    findHeader([
+      'interaction type',
+      'type',
+    ])
+
+
+  const releaseDate =
+    findHeader([
+      'release date',
+      'released',
+      'date',
+    ])
+
+
+  if (
+    character <
+      0 ||
+    item <
+      0 ||
+    interactionType <
+      0
+  ) {
+
+    return null
+
+  }
 
 
   return {
-    canonicalName:
-      cleanText(
-        match[1]
-      ),
-
     character,
-
-    kind:
-      match[3]
-        .toLowerCase() ===
-        'voice'
-        ? 'voice'
-        : 'video',
+    item,
+    interactionType,
+    releaseDate:
+      releaseDate >=
+        0
+        ? releaseDate
+        : null,
   }
 
 }
 
 
-function sectionHeadingText(
-  character: string,
-  kind:
-    PhoneCallKind
-) {
-
-  return normalizeText(
-    `${character}'s ${
-      kind ===
-        'voice'
-        ? 'Voice Calls'
-        : 'Video Calls'
-    }`
-  )
-
-}
-
-
-function headingLevel(
-  value: string
-) {
-
-  const match =
-    value.match(
-      /^h([1-6])$/i
-    )
-
-
-  return match
-    ? Number(
-        match[1]
-      )
-    : null
-
-}
-
-
-function findSectionHeading(
+function cellText(
   $:
     ReturnType<
       typeof load
     >,
-  character:
-    string,
-  kind:
-    PhoneCallKind
-) {
-
-  const wanted =
-    sectionHeadingText(
-      character,
-      kind
-    )
-
-
-  return $(
-    'h1, h2, h3, h4, h5, h6'
-  )
-    .filter(
-      (
-        _index,
-        element
-      ) =>
-        normalizeText(
-          $(
-            element
-          )
-            .text()
-        ) ===
-        wanted
-    )
-    .first()
-
-}
-
-
-function smallestWikiGGCallContainer(
-  $:
-    ReturnType<
-      typeof load
-    >,
-  anchor:
+  cell:
     ReturnType<
       typeof $
     >
 ) {
 
-  let current =
-    anchor.parent()
-
-
-  for (
-    let depth =
-      0;
-    depth <
-      8 &&
-    current.length >
-      0;
-    depth +=
-      1
-  ) {
-
-    const text =
-      cleanText(
-        current.text()
-      )
-
-
-    const callLinks =
-      current
-        .find(
-          'a[href*="/wiki/"]'
-        )
-        .filter(
-          (
-            _index,
-            element
-          ) => {
-
-            const href =
-              $(
-                element
-              )
-                .attr(
-                  'href'
-                )
-
-
-            if (
-              !href
-            ) {
-
-              return false
-
-            }
-
-
-            return Boolean(
-              parseWikiGGPhoneTitle(
-                pageTitleFromHref(
-                  href,
-                  wikiBaseUrl
-                )
-              )
-            )
-
-          }
-        )
-
-
-    if (
-      callLinks.length ===
-        1 &&
-      extractReleaseDate(
-        text
-      )
-    ) {
-
-      return current
-
-    }
-
-
-    current =
-      current.parent()
-
-  }
-
-
-  return anchor.parent()
-
-}
-
-
-function parseWikiGGSection(
-  $:
-    ReturnType<
-      typeof load
-    >,
-  character:
-    string,
-  expectedKind:
-    PhoneCallKind,
-  fetchedAt:
-    string
-): WikiPhoneRecord[] {
-
-  const heading =
-    findSectionHeading(
-      $,
-      character,
-      expectedKind
+  const text =
+    cleanText(
+      cell.text()
     )
 
 
   if (
-    heading.length ===
-    0
+    text
   ) {
 
-    return []
+    return text
 
   }
 
 
-  const headingNode =
-    heading.get(
-      0
-    ) as
-      | {
-          name?: string
-        }
-      | undefined
+  const titledText =
+    cleanText(
+      cell
+        .find(
+          'a[title], [title]'
+        )
+        .map(
+          (
+            _index,
+            element
+          ) =>
+            $(
+              element
+            )
+              .attr(
+                'title'
+              ) ??
+            ''
+        )
+        .get()
+        .join(
+          ' '
+        )
+    )
 
 
-  const level =
-    headingLevel(
-      headingNode?.name ??
-      ''
-    ) ??
-    3
-
-
-  const records =
-    new Map<
-      string,
-      WikiPhoneRecord
-    >()
-
-
-  for (
-    const element
-    of heading
-      .nextAll()
-      .toArray()
+  if (
+    titledText
   ) {
 
-    const elementName =
-      (
-        element as {
-          name?: string
-        }
-      ).name ??
-      ''
+    return titledText
+
+  }
 
 
-    const candidateLevel =
-      headingLevel(
-        elementName
-      )
-
-
-    if (
-      candidateLevel !==
-        null &&
-      candidateLevel <=
-        level
-    ) {
-
-      break
-
-    }
-
-
-    $(
-      element
-    )
+  return cleanText(
+    cell
       .find(
-        'a[href*="/wiki/"]'
+        'img[alt]'
       )
-      .addBack(
-        'a[href*="/wiki/"]'
-      )
-      .each(
+      .map(
         (
           _index,
-          anchorElement
-        ) => {
-
-          const anchor =
-            $(
-              anchorElement
-            )
-
-
-          const href =
-            anchor.attr(
-              'href'
-            )
-
-
-          if (
-            !href
-          ) {
-
-            return
-
-          }
-
-
-          const parsed =
-            parseWikiGGPhoneTitle(
-              pageTitleFromHref(
-                href,
-                wikiBaseUrl
-              )
-            )
-
-
-          if (
-            !parsed ||
-            parsed.kind !==
-            expectedKind
-          ) {
-
-            return
-
-          }
-
-
-          const canonicalName =
-            stripCharacterPrefix(
-              parsed.canonicalName,
-              character
-            )
-
-
-          const sourceUrl =
-            absoluteUrl(
-              href,
-              wikiBaseUrl
-            )
-
-
-          if (
-            !canonicalName ||
-            !sourceUrl
-          ) {
-
-            return
-
-          }
-
-
-          const key =
-            phoneSourceKey(
-              character,
-              parsed.kind,
-              canonicalName
-            )
-
-
-          const releaseDate =
-            extractReleaseDate(
-              cleanText(
-                smallestWikiGGCallContainer(
-                  $,
-                  anchor
-                )
-                  .text()
-              )
-            )
-
-
-          const existing =
-            records.get(
-              key
-            )
-
-
-          if (
-            existing &&
-            (
-              existing.releaseDate ||
-              !releaseDate
-            )
-          ) {
-
-            return
-
-          }
-
-
-          records.set(
-            key,
-            {
-              canonicalName,
-
-              character,
-
-              category:
-                phoneCategory(
-                  parsed.kind
-                ),
-
-              releaseDate,
-
-              sourceName:
-                'wiki.gg',
-
-              sourceUrl,
-
-              sourceKey:
-                key,
-
-              sourceUpdatedAt:
-                fetchedAt,
-            }
+          element
+        ) =>
+          $(
+            element
           )
-
-        }
+            .attr(
+              'alt'
+            ) ??
+          ''
       )
-
-  }
-
-
-  return [
-    ...records.values(),
-  ]
+      .get()
+      .join(
+        ' '
+      )
+  )
 
 }
 
 
-async function fetchWikiGGCalls(
-  character: string,
+function parseWikiGGPhoneAll(
+  html: string,
+  selectedCharacter:
+    string,
   fetchedAt:
     string
 ) {
 
-  const response =
-    await fetchPhoneSource(
-      wikiPhoneCallsUrl
-    )
-
-
-  const html =
-    await response.text()
-
-
   const $ =
     load(
       html
     )
 
 
-  return {
-    voiceCalls:
-      parseWikiGGSection(
-        $,
-        character,
-        'voice',
-        fetchedAt
-      ),
-
-    videoCalls:
-      parseWikiGGSection(
-        $,
-        character,
-        'video',
-        fetchedAt
-      ),
-  }
-
-}
-
-
-function smallestLadsCallContainer(
-  $:
-    ReturnType<
-      typeof load
-    >,
-  anchor:
-    ReturnType<
-      typeof $
-    >
-) {
-
-  let current =
-    anchor.parent()
-
-
-  for (
-    let depth =
-      0;
-    depth <
-      6 &&
-    current.length >
-      0;
-    depth +=
-      1
-  ) {
-
-    const text =
-      cleanText(
-        current.text()
-      )
-
-
-    if (
-      text.length <=
-        1000 &&
-      extractReleaseDate(
-        text
-      )
-    ) {
-
-      return current
-
-    }
-
-
-    current =
-      current.parent()
-
-  }
-
-
-  return anchor.parent()
-
-}
-
-
-function parseLadsHtml(
-  html: string,
-  character: string,
-  fetchedAt:
-    string,
-  pageUrl:
-    string,
-  expectedKind?:
-    PhoneCallKind
-) {
-
-  const $ =
-    load(
-      html
+  const wantedCharacter =
+    canonicalCharacter(
+      selectedCharacter
+    ) ??
+    cleanText(
+      selectedCharacter
     )
 
 
@@ -1218,29 +770,34 @@ function parseLadsHtml(
     >()
 
 
+  let recognizedTable =
+    false
+
+
   $(
-    'a[href*="/wiki/"]'
+    'table'
   )
     .each(
       (
-        _index,
-        element
+        _tableIndex,
+        tableElement
       ) => {
 
-        const anchor =
+        const table =
           $(
-            element
+            tableElement
           )
 
 
-        const href =
-          anchor.attr(
-            'href'
+        const rows =
+          table.find(
+            'tr'
           )
 
 
         if (
-          !href
+          rows.length ===
+          0
         ) {
 
           return
@@ -1248,49 +805,76 @@ function parseLadsHtml(
         }
 
 
-        const hrefTitle =
-          pageTitleFromHref(
-            href,
-            ladsBaseUrl
-          )
+        let headerRowIndex =
+          -1
 
 
-        const titleAttribute =
-          anchor.attr(
-            'title'
-          ) ??
-          ''
-
-
-        const candidates = [
-          hrefTitle,
-          titleAttribute,
-          cleanText(
-            anchor.text()
-          ),
-        ]
-
-
-        let parsed:
-          ParsedPhoneTitle |
+        let columns:
+          PhoneTableColumns |
           null =
           null
 
 
+        const rowElements =
+          rows.toArray()
+
+
         for (
-          const candidate
-          of candidates
+          let rowIndex =
+            0;
+          rowIndex <
+            rowElements.length;
+          rowIndex +=
+            1
         ) {
 
-          parsed =
-            parseLadsPhoneTitle(
-              candidate
+          const rowElement =
+            rowElements[
+              rowIndex
+            ]
+
+
+          const headerCells =
+            $(
+              rowElement
+            )
+              .children(
+                'th, td'
+              )
+
+
+          const headers =
+            headerCells
+              .map(
+                (
+                  _cellIndex,
+                  cellElement
+                ) =>
+                  cellText(
+                    $,
+                    $(
+                      cellElement
+                    )
+                  )
+              )
+              .get()
+
+
+          const detected =
+            tableColumns(
+              headers
             )
 
 
           if (
-            parsed
+            detected
           ) {
+
+            headerRowIndex =
+              rowIndex
+
+            columns =
+              detected
 
             break
 
@@ -1300,18 +884,9 @@ function parseLadsHtml(
 
 
         if (
-          !parsed ||
-          normalizeText(
-            parsed.character
-          ) !==
-          normalizeText(
-            character
-          ) ||
-          (
-            expectedKind &&
-            parsed.kind !==
-              expectedKind
-          )
+          !columns ||
+          headerRowIndex <
+            0
         ) {
 
           return
@@ -1319,267 +894,214 @@ function parseLadsHtml(
         }
 
 
-        const canonicalName =
-          stripCharacterPrefix(
-            parsed.canonicalName,
-            parsed.character
+        recognizedTable =
+          true
+
+
+        const rowColumns =
+          columns
+
+
+        rows
+          .slice(
+            headerRowIndex +
+            1
           )
+          .each(
+            (
+              _rowIndex,
+              rowElement
+            ) => {
+
+              const cells =
+                $(
+                  rowElement
+                )
+                  .children(
+                    'th, td'
+                  )
 
 
-        if (
-          !canonicalName
-        ) {
-
-          return
-
-        }
-
-
-        const sourceUrl =
-          absoluteUrl(
-            href,
-            ladsBaseUrl
-          ) ??
-          pageUrl
+              const requiredIndex =
+                Math.max(
+                  rowColumns.character,
+                  rowColumns.item,
+                  rowColumns.interactionType
+                )
 
 
-        const key =
-          phoneSourceKey(
-            parsed.character,
-            parsed.kind,
-            canonicalName
-          )
+              if (
+                cells.length <=
+                requiredIndex
+              ) {
+
+                return
+
+              }
 
 
-        const releaseDate =
-          extractReleaseDate(
-            cleanText(
-              smallestLadsCallContainer(
-                $,
-                anchor
+              const characterCell =
+                cells.eq(
+                  rowColumns.character
+                )
+
+
+              const itemCell =
+                cells.eq(
+                  rowColumns.item
+                )
+
+
+              const typeCell =
+                cells.eq(
+                  rowColumns.interactionType
+                )
+
+
+              const rowCharacter =
+                canonicalCharacter(
+                  cellText(
+                    $,
+                    characterCell
+                  )
+                )
+
+
+              if (
+                !rowCharacter ||
+                normalizeText(
+                  rowCharacter
+                ) !==
+                normalizeText(
+                  wantedCharacter
+                )
+              ) {
+
+                return
+
+              }
+
+
+              const kind =
+                phoneKindFromInteractionType(
+                  cellText(
+                    $,
+                    typeCell
+                  )
+                )
+
+
+              if (
+                !kind
+              ) {
+
+                return
+
+              }
+
+
+              const canonicalName =
+                stripCallSuffix(
+                  stripCharacterPrefix(
+                    cellText(
+                      $,
+                      itemCell
+                    ),
+                    rowCharacter
+                  )
+                )
+
+
+              if (
+                !canonicalName
+              ) {
+
+                return
+
+              }
+
+
+              const itemHref =
+                itemCell
+                  .find(
+                    'a[href]'
+                  )
+                  .first()
+                  .attr(
+                    'href'
+                  )
+
+
+              const sourceUrl =
+                absoluteUrl(
+                  itemHref
+                ) ??
+                wikiPhoneAllUrl
+
+
+              const releaseDate =
+                rowColumns.releaseDate !==
+                  null &&
+                cells.length >
+                  rowColumns.releaseDate
+                  ? extractReleaseDate(
+                      cellText(
+                        $,
+                        cells.eq(
+                          rowColumns.releaseDate
+                        )
+                      )
+                    )
+                  : null
+
+
+              const sourceKey =
+                phoneSourceKey(
+                  rowCharacter,
+                  kind,
+                  canonicalName
+                )
+
+
+              records.set(
+                sourceKey,
+                {
+                  canonicalName,
+                  character:
+                    rowCharacter,
+                  category:
+                    phoneCategory(
+                      kind
+                    ),
+                  releaseDate,
+                  sourceName:
+                    'wiki.gg',
+                  sourceUrl,
+                  sourceKey,
+                  sourceUpdatedAt:
+                    fetchedAt,
+                }
               )
-                .text()
-            )
+
+            }
           )
-
-
-        const existing =
-          records.get(
-            key
-          )
-
-
-        if (
-          existing &&
-          (
-            existing.releaseDate ||
-            !releaseDate
-          )
-        ) {
-
-          return
-
-        }
-
-
-        records.set(
-          key,
-          {
-            canonicalName,
-
-            character:
-              parsed.character,
-
-            category:
-              phoneCategory(
-                parsed.kind
-              ),
-
-            releaseDate,
-
-            sourceName:
-              'lads.wiki',
-
-            sourceUrl,
-
-            sourceKey:
-              key,
-
-            sourceUpdatedAt:
-              fetchedAt,
-          }
-        )
 
       }
     )
 
 
-  return [
-    ...records.values(),
-  ]
-
-}
-
-
-async function fetchLadsCallsPage(
-  character: string,
-  fetchedAt:
-    string
-) {
-
-  const response =
-    await fetchPhoneSource(
-      ladsCallsUrl
-    )
-
-
-  const html =
-    await response.text()
-
-
-  const records =
-    parseLadsHtml(
-      html,
-      character,
-      fetchedAt,
-      ladsCallsUrl
-    )
-
-
-  return {
-    voiceCalls:
-      records.filter(
-        (record) =>
-          record.category ===
-          'Phone Call'
-      ),
-
-    videoCalls:
-      records.filter(
-        (record) =>
-          record.category ===
-          'Phone Video'
-      ),
-  }
-
-}
-
-
-async function fetchLadsCategory(
-  character: string,
-  kind:
-    PhoneCallKind,
-  fetchedAt:
-    string
-) {
-
-  const url =
-    kind ===
-      'voice'
-      ? ladsVoiceCategoryUrl
-      : ladsVideoCategoryUrl
-
-
-  const response =
-    await fetchPhoneSource(
-      url
-    )
-
-
-  const html =
-    await response.text()
-
-
-  return parseLadsHtml(
-    html,
-    character,
-    fetchedAt,
-    url,
-    kind
-  )
-
-}
-
-
-function mergeRecords(
-  primary:
-    WikiPhoneRecord[],
-  backup:
-    WikiPhoneRecord[]
-) {
-
-  const records =
-    new Map<
-      string,
-      WikiPhoneRecord
-    >()
-
-
-  /*
-   * Primary records win. Backup records fill missing
-   * calls and can supply a date only when the primary
-   * record did not have one.
-   */
-  for (
-    const record
-    of primary
+  if (
+    !recognizedTable
   ) {
 
-    records.set(
-      record.sourceKey,
-      record
+    throw new Error(
+      'wiki.gg Phone / All did not contain a table with Characters, Item, and Interaction Type columns.'
     )
 
   }
 
 
-  for (
-    const record
-    of backup
-  ) {
-
-    const existing =
-      records.get(
-        record.sourceKey
-      )
-
-
-    if (
-      !existing
-    ) {
-
-      records.set(
-        record.sourceKey,
-        record
-      )
-
-
-      continue
-
-    }
-
-
-    if (
-      !existing.releaseDate &&
-      record.releaseDate
-    ) {
-
-      records.set(
-        record.sourceKey,
-        {
-          ...existing,
-
-          releaseDate:
-            record.releaseDate,
-        }
-      )
-
-    }
-
-  }
-
-
-  return [
+  const allRecords = [
     ...records.values(),
   ]
     .sort(
@@ -1592,6 +1114,23 @@ function mergeRecords(
             right.canonicalName
           )
     )
+
+
+  return {
+    voiceCalls:
+      allRecords.filter(
+        (record) =>
+          record.category ===
+          'Phone Call'
+      ),
+
+    videoCalls:
+      allRecords.filter(
+        (record) =>
+          record.category ===
+          'Phone Video'
+      ),
+  }
 
 }
 
@@ -1617,8 +1156,8 @@ function fullInputFromExistingPhone(
       existing.subcategory,
 
     /*
-     * A backup wiki must never erase a release date
-     * that an earlier source already supplied.
+     * Phone / All may not expose a release date for
+     * every row. Never erase an existing one.
      */
     releaseDate:
       record.releaseDate ??
@@ -1673,195 +1212,27 @@ export async function fetchWikiPhoneCalls(
       .toISOString()
 
 
-  let primaryVoice:
-    WikiPhoneRecord[] =
-    []
-
-
-  let primaryVideo:
-    WikiPhoneRecord[] =
-    []
-
-
-  let ladsCallsVoice:
-    WikiPhoneRecord[] =
-    []
-
-
-  let ladsCallsVideo:
-    WikiPhoneRecord[] =
-    []
-
-
-  let ladsCategoryVoice:
-    WikiPhoneRecord[] =
-    []
-
-
-  let ladsCategoryVideo:
-    WikiPhoneRecord[] =
-    []
-
-
-  /*
-   * ========================================
-   * PRIMARY — wiki.gg
-   * ========================================
-   *
-   * Failure here no longer aborts the entire phone
-   * sync. The backup sources can carry the import.
-   */
-  try {
-
-    const primary =
-      await fetchWikiGGCalls(
-        character,
-        fetchedAt
-      )
-
-
-    primaryVoice =
-      primary.voiceCalls
-
-
-    primaryVideo =
-      primary.videoCalls
-
-  } catch (error) {
-
-    console.warn(
-      `wiki.gg phone source unavailable for ${character}; trying backup source:`,
-      error
-    )
-
-  }
-
-
-  /*
-   * ========================================
-   * BACKUP — lads.wiki Calls
-   * ========================================
-   *
-   * One request should normally provide both Voice
-   * and Video calls.
-   */
-  try {
-
-    const backup =
-      await fetchLadsCallsPage(
-        character,
-        fetchedAt
-      )
-
-
-    ladsCallsVoice =
-      backup.voiceCalls
-
-
-    ladsCallsVideo =
-      backup.videoCalls
-
-  } catch (error) {
-
-    console.warn(
-      `lads.wiki Calls backup unavailable for ${character}; trying category backups:`,
-      error
-    )
-
-  }
-
-
-  /*
-   * ========================================
-   * TERTIARY BACKUP — category pages
-   * ========================================
-   *
-   * Only make these extra requests when the combined
-   * Calls page failed to produce that call type.
-   */
-  if (
-    ladsCallsVoice.length ===
-    0
-  ) {
-
-    try {
-
-      ladsCategoryVoice =
-        await fetchLadsCategory(
-          character,
-          'voice',
-          fetchedAt
-        )
-
-    } catch (error) {
-
-      console.warn(
-        `lads.wiki Voice Call category unavailable for ${character}:`,
-        error
-      )
-
-    }
-
-  }
-
-
-  if (
-    ladsCallsVideo.length ===
-    0
-  ) {
-
-    try {
-
-      ladsCategoryVideo =
-        await fetchLadsCategory(
-          character,
-          'video',
-          fetchedAt
-        )
-
-    } catch (error) {
-
-      console.warn(
-        `lads.wiki Video Call category unavailable for ${character}:`,
-        error
-      )
-
-    }
-
-  }
-
-
-  const backupVoice =
-    mergeRecords(
-      ladsCallsVoice,
-      ladsCategoryVoice
+  const response =
+    await fetchPhoneSource(
+      wikiPhoneAllUrl
     )
 
 
-  const backupVideo =
-    mergeRecords(
-      ladsCallsVideo,
-      ladsCategoryVideo
-    )
+  const html =
+    await response.text()
 
 
-  const voiceCalls =
-    mergeRecords(
-      primaryVoice,
-      backupVoice
-    )
-
-
-  const videoCalls =
-    mergeRecords(
-      primaryVideo,
-      backupVideo
+  const parsed =
+    parseWikiGGPhoneAll(
+      html,
+      character,
+      fetchedAt
     )
 
 
   const total =
-    voiceCalls.length +
-    videoCalls.length
+    parsed.voiceCalls.length +
+    parsed.videoCalls.length
 
 
   if (
@@ -1870,7 +1241,7 @@ export async function fetchWikiPhoneCalls(
   ) {
 
     throw new Error(
-      `No Voice Calls or Video Calls could be discovered for ${character} from wiki.gg or the lads.wiki backup sources.`
+      `No Voice Calls or Video Calls could be discovered for ${character} from wiki.gg Phone / All.`
     )
 
   }
@@ -1878,27 +1249,15 @@ export async function fetchWikiPhoneCalls(
 
   return {
     character,
-
     fetchedAt,
-
-    voiceCalls,
-
-    videoCalls,
-
+    voiceCalls:
+      parsed.voiceCalls,
+    videoCalls:
+      parsed.videoCalls,
     total,
-
     sources: {
       wikiGG:
-        primaryVoice.length +
-        primaryVideo.length,
-
-      ladsCalls:
-        ladsCallsVoice.length +
-        ladsCallsVideo.length,
-
-      ladsCategories:
-        ladsCategoryVoice.length +
-        ladsCategoryVideo.length,
+        total,
     },
   }
 
@@ -1941,11 +1300,10 @@ export async function syncWikiPhoneCalls(
     try {
 
       /*
-       * Match by character + title + final archive
-       * category before using source identity. This
-       * migrates older wiki.gg phone rows in place
-       * when a call is now supplied by lads.wiki,
-       * preserving its catalog ID and any file match.
+       * Match by character + item name + archive
+       * category first. This preserves existing IDs,
+       * manual notes, and file matches while changing
+       * the metadata source to wiki.gg Phone / All.
        */
       const existing =
         findCatalogItemByCharacterAndName(

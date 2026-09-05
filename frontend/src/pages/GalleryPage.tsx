@@ -10,6 +10,9 @@ import {
   useLocation,
 } from 'react-router-dom'
 
+import ArchiveSequenceNav
+  from '../components/ArchiveSequenceNav'
+
 
 type GalleryItem = {
   id: string
@@ -990,6 +993,8 @@ function GalleryPage() {
           <h1>
             Gallery
           </h1>
+
+          <ArchiveSequenceNav />
 
         </div>
 

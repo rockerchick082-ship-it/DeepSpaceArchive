@@ -2,6 +2,9 @@ import {
   Link,
 } from 'react-router-dom'
 
+import ArchiveSequenceNav
+  from '../components/ArchiveSequenceNav'
+
 
 function PhonePage() {
 
@@ -28,6 +31,8 @@ function PhonePage() {
           <h1>
             Phone
           </h1>
+
+          <ArchiveSequenceNav />
 
         </div>
 

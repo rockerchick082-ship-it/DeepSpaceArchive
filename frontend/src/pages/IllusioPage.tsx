@@ -9,6 +9,9 @@ import {
   useNavigate,
 } from 'react-router-dom'
 
+import ArchiveSequenceNav
+  from '../components/ArchiveSequenceNav'
+
 import type {
   Memory,
 } from '../data/memoria'
@@ -249,6 +252,8 @@ function IllusioPage() {
           <h1>
             Illusio
           </h1>
+
+          <ArchiveSequenceNav />
 
         </div>
 

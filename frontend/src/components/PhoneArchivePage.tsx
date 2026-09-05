@@ -949,6 +949,49 @@ function PhoneArchivePage({
             {title}
           </h1>
 
+
+          <nav
+            className="archive-sequence-nav"
+            aria-label="Phone call collection navigation"
+          >
+
+            {category ===
+              'Phone Video' ? (
+
+              <Link
+                to="/phone/calls"
+                className="archive-sequence-link"
+                rel="prev"
+              >
+                <span aria-hidden="true">
+                  ‹
+                </span>
+
+                <span>
+                  Phone Calls
+                </span>
+              </Link>
+
+            ) : (
+
+              <Link
+                to="/phone/videos"
+                className="archive-sequence-link"
+                rel="next"
+              >
+                <span>
+                  Video Calls
+                </span>
+
+                <span aria-hidden="true">
+                  ›
+                </span>
+              </Link>
+
+            )}
+
+          </nav>
+
         </div>
 
       </header>

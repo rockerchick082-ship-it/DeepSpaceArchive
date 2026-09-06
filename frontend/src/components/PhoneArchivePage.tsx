@@ -1378,6 +1378,16 @@ function PhoneArchivePage({
 
                             </div>
 
+
+                            {item.source && (
+
+                              <span className="phone-log-source">
+                                <strong>Source:</strong>{' '}
+                                {item.source}
+                              </span>
+
+                            )}
+
                           </div>
 
 

@@ -55,6 +55,10 @@ declare global {
       deleteDownload: (
         relativePath: string
       ) => boolean
+      updatePlaybackState?: (
+        payloadJson: string
+      ) => void
+      clearPlaybackState?: () => void
     }
 
     Capacitor?: {
@@ -98,6 +102,54 @@ type VideoArchivePlayerProps = {
   returnPath: string
   playerPath: string
   sequenceMode?: boolean
+}
+
+
+function updateNativePlaybackState(
+  item: ArchiveItem,
+  categoryLabel: string,
+  playing: boolean
+) {
+
+  const nativeBridge =
+    window.DeepSpaceArchiveMobile
+
+
+  if (
+    !nativeBridge?.updatePlaybackState
+  ) {
+
+    return
+
+  }
+
+
+  try {
+
+    nativeBridge.updatePlaybackState(
+      JSON.stringify({
+        playing,
+        hasVideo:
+          item.mediaType ===
+          'video',
+        title:
+          item.title,
+        character:
+          item.character,
+        category:
+          categoryLabel,
+      })
+    )
+
+  } catch (error) {
+
+    console.debug(
+      'Unable to update native playback state:',
+      error
+    )
+
+  }
+
 }
 
 
@@ -2351,6 +2403,98 @@ useEffect(
   useEffect(
     () => {
 
+      function handleNativeMediaCommand(
+        event: Event
+      ) {
+
+        const customEvent =
+          event as CustomEvent<{
+            command?: string
+          }>
+
+        const video =
+          videoRef.current
+
+
+        if (!video) {
+
+          return
+
+        }
+
+
+        if (
+          customEvent.detail?.command ===
+          'play'
+        ) {
+
+          backgroundPlaybackDesiredRef.current =
+            true
+
+          void video.play()
+
+          return
+
+        }
+
+
+        if (
+          customEvent.detail?.command ===
+          'pause'
+        ) {
+
+          backgroundPlaybackDesiredRef.current =
+            false
+
+          video.pause()
+
+        }
+
+      }
+
+
+      window.addEventListener(
+        'dsa-native-media-command',
+        handleNativeMediaCommand
+      )
+
+
+      return () => {
+
+        window.removeEventListener(
+          'dsa-native-media-command',
+          handleNativeMediaCommand
+        )
+
+      }
+
+    },
+    []
+  )
+
+
+  useEffect(
+    () => {
+
+      return () => {
+
+        window.DeepSpaceArchiveMobile
+          ?.clearPlaybackState?.()
+
+        document.documentElement.removeAttribute(
+          'data-dsa-pip'
+        )
+
+      }
+
+    },
+    []
+  )
+
+
+  useEffect(
+    () => {
+
       function handleVisibilityChange() {
 
         const video =
@@ -3047,6 +3191,10 @@ useEffect(
     }
 
 
+    window.DeepSpaceArchiveMobile
+      ?.clearPlaybackState?.()
+
+
     /*
      * Save the true end position first.
      *
@@ -3456,6 +3604,17 @@ useEffect(
             }
 
 
+            if (item) {
+
+              updateNativePlaybackState(
+                item,
+                categoryLabel,
+                true
+              )
+
+            }
+
+
             resetLocalTrackingPosition()
 
             void resetCompletedWatch()
@@ -3553,6 +3712,20 @@ useEffect(
 
                 },
                 120
+              )
+
+            }
+
+
+            if (
+              item &&
+              !backgroundPlaybackDesiredRef.current
+            ) {
+
+              updateNativePlaybackState(
+                item,
+                categoryLabel,
+                false
               )
 
             }
@@ -4278,6 +4451,23 @@ useEffect(
 
                 <strong>
                   {currentItem.releaseDate}
+                </strong>
+
+              </div>
+
+            )}
+
+
+            {currentItem.source && (
+
+              <div className="player-detail-source">
+
+                <span className="player-detail-label">
+                  SOURCE / UNLOCK
+                </span>
+
+                <strong>
+                  {currentItem.source}
                 </strong>
 
               </div>

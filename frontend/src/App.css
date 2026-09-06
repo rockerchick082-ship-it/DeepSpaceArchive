@@ -14497,8 +14497,12 @@ input:focus {
   position: absolute;
   inset: auto 0 0 0;
   z-index: 3;
-  max-height: 72%;
+  box-sizing: border-box;
+  max-height: 78%;
   padding: 54px 18px 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   background: linear-gradient(
     to bottom,
     rgba(10, 11, 18, 0),
@@ -14520,9 +14524,11 @@ input:focus {
 }
 
 .memory-card:hover .memory-text-hover,
-.memory-card:focus-visible .memory-text-hover {
+.memory-card:focus-visible .memory-text-hover,
+.memory-card:focus-within .memory-text-hover {
   opacity: 1;
   transform: translateY(0);
+  pointer-events: auto;
 }
 
 /* ========================================
@@ -30140,11 +30146,17 @@ html[data-dsa-mobile="true"]
   border-radius: 10px;
   color: #fff;
   background: rgba(255, 255, 255, 0.045);
+  color-scheme: dark;
   font: inherit;
 }
 
 .ranking-filters select:disabled {
   opacity: 0.45;
+}
+
+.ranking-filters select option {
+  background: #242633;
+  color: #fff;
 }
 
 .ranking-empty-state,
@@ -30266,8 +30278,9 @@ html[data-dsa-mobile="true"]
 
 .ranking-matchup-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(2, minmax(240px, 360px));
+  justify-content: center;
+  gap: 40px;
 }
 
 .ranking-choice-card {
@@ -30284,7 +30297,7 @@ html[data-dsa-mobile="true"]
   position: relative;
   display: block;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 3 / 4;
   padding: 0;
   overflow: hidden;
   border: 0;
@@ -30524,7 +30537,8 @@ html[data-dsa-mobile="true"]
   }
 
   .ranking-matchup-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 360px);
+    justify-content: center;
     gap: 34px;
   }
 
@@ -30551,4 +30565,68 @@ html[data-dsa-mobile="true"]
     grid-column: 2;
     white-space: normal;
   }
+}
+
+
+.phone-log-source {
+  display: block;
+  margin-top: 6px;
+  color: rgba(255, 255, 255, 0.54);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.phone-log-source strong {
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 600;
+}
+
+/* Android picture-in-picture strips the page down to the active video. */
+html[data-dsa-pip="true"] body {
+  overflow: hidden;
+  background: #000;
+}
+
+html[data-dsa-pip="true"] .player-header,
+html[data-dsa-pip="true"] .player-controls,
+html[data-dsa-pip="true"] .player-details,
+html[data-dsa-pip="true"] .player-info-panel,
+html[data-dsa-pip="true"] .player-metadata,
+html[data-dsa-pip="true"] .player-footer {
+  display: none !important;
+}
+
+html[data-dsa-pip="true"] .player-page > *:not(.player-stage) {
+  display: none !important;
+}
+
+html[data-dsa-pip="true"] .player-page,
+html[data-dsa-pip="true"] .player-stage {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #000 !important;
+}
+
+html[data-dsa-pip="true"] .memory-video-player {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  background: #000 !important;
+}
+
+.player-detail-source {
+  grid-column: 1 / -1;
+}
+
+.player-detail-source strong {
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.45;
 }

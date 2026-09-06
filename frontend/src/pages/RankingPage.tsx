@@ -117,41 +117,36 @@ const rankingCategories:
 
   {
     key:
-      'phone-video',
+      'secret-times',
 
     label:
-      'Phone Videos',
+      'Secret Times',
 
     category:
-      'Phone Video',
+      'Secret Times',
 
     apiEndpoint:
-      '/api/library/phone-videos',
+      '/api/library/secret-times',
 
     playerPath:
-      '/phone/watch',
-
-    playerQuery: {
-      category:
-        'Phone Video',
-    },
+      '/secret-times/watch',
   },
 
   {
     key:
-      'illusio',
+      'tender-moments',
 
     label:
-      'Illusio',
+      'Tender Moments',
 
     category:
-      'Illusio',
+      'Tender Moments',
 
     apiEndpoint:
-      '/api/library/illusio',
+      '/api/library/tender-moments',
 
     playerPath:
-      '/illusio/watch',
+      '/tender-moments/watch',
   },
 ]
 

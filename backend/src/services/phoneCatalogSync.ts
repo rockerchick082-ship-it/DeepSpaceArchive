@@ -84,6 +84,12 @@ export type WikiPhoneRecord = {
 
   releaseDate: string | null
 
+  /*
+   * Human-readable unlock/source text from the hidden
+   * Sources column on wiki.gg Phone / All.
+   */
+  source: string | null
+
   sourceName:
     PhoneSourceName
 
@@ -138,6 +144,7 @@ type PhoneTableColumns = {
   item: number
   interactionType: number
   releaseDate: number | null
+  sources: number | null
 }
 
 
@@ -628,6 +635,13 @@ function tableColumns(
     ])
 
 
+  const sources =
+    findHeader([
+      'source',
+      'sources',
+    ])
+
+
   if (
     character <
       0 ||
@@ -650,6 +664,12 @@ function tableColumns(
       releaseDate >=
         0
         ? releaseDate
+        : null,
+
+    sources:
+      sources >=
+        0
+        ? sources
         : null,
   }
 
@@ -1064,6 +1084,21 @@ function parseWikiGGPhoneAll(
                   : null
 
 
+              const sourceDetails =
+                rowColumns.sources !==
+                  null &&
+                cells.length >
+                  rowColumns.sources
+                  ? cellText(
+                      $,
+                      cells.eq(
+                        rowColumns.sources
+                      )
+                    ) ||
+                    null
+                  : null
+
+
               const sourceKey =
                 phoneSourceKey(
                   rowCharacter,
@@ -1111,6 +1146,8 @@ function parseWikiGGPhoneAll(
                     rowCharacter,
                   category,
                   releaseDate,
+                  source:
+                    sourceDetails,
                   sourceName:
                     'wiki.gg',
                   sourceUrl,
@@ -1216,6 +1253,7 @@ function fullInputFromExistingPhone(
       existing.attribute,
 
     source:
+      record.source ??
       existing.source,
 
     imageUrl:
@@ -1413,6 +1451,9 @@ export async function syncWikiPhoneCalls(
 
         releaseDate:
           record.releaseDate,
+
+        source:
+          record.source,
 
         sourceName:
           record.sourceName,

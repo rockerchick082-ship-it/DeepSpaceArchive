@@ -327,6 +327,37 @@ export async function deleteCatalogRecord(
 }
 
 
+export async function deleteCatalogRecords(
+  catalogItemIds: number[]
+) {
+
+  return requestJson<{
+    success: boolean
+    requested: number
+    deleted: number
+  }>(
+    '/api/catalog/bulk-delete',
+    {
+      method:
+        'POST',
+
+      headers: {
+        'Content-Type':
+          'application/json',
+      },
+
+      body:
+        JSON.stringify({
+          ids:
+            catalogItemIds,
+        }),
+    },
+    'Unable to delete selected catalog records.'
+  )
+
+}
+
+
 export async function fetchWikiCacheStatus(
   force = false
 ) {

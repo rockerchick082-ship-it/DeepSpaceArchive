@@ -9,12 +9,24 @@ type CatalogTableSectionProps = {
   relationshipError: string
   overrideMessage: string
   bulkMatchMessage: string
+  bulkDeleteMessage: string
   overrideError: string
   loading: boolean
   items: CatalogItem[]
   relationshipView: CatalogRelationshipView | null
   overrideBusyId: number | null
   relationshipLoadingId: number | null
+  selectedIds: ReadonlySet<number>
+  bulkDeleting: boolean
+
+  onToggleSelected:
+    (itemId: number) => void
+
+  onToggleSelectAllVisible:
+    () => void
+
+  onDeleteSelected:
+    () => void
 
   onOpenMatchReview:
     (item: CatalogItem) => void
@@ -38,18 +50,47 @@ function CatalogTableSection({
   relationshipError,
   overrideMessage,
   bulkMatchMessage,
+  bulkDeleteMessage,
   overrideError,
   loading,
   items,
   relationshipView,
   overrideBusyId,
   relationshipLoadingId,
+  selectedIds,
+  bulkDeleting,
+  onToggleSelected,
+  onToggleSelectAllVisible,
+  onDeleteSelected,
   onOpenMatchReview,
   onOverrideFileName,
   onToggleRelationships,
   onOpenEditRecord,
   onDeleteRecord,
 }: CatalogTableSectionProps) {
+
+  const visibleIds =
+    items.map(
+      (item) =>
+        item.id
+    )
+
+
+  const selectedVisibleCount =
+    visibleIds.filter(
+      (id) =>
+        selectedIds.has(
+          id
+        )
+    ).length
+
+
+  const allVisibleSelected =
+    visibleIds.length >
+      0 &&
+    selectedVisibleCount ===
+      visibleIds.length
+
 
   return (
     <>
@@ -89,6 +130,15 @@ function CatalogTableSection({
       )}
 
 
+      {bulkDeleteMessage && (
+
+        <div className="settings-status-message settings-status-success">
+          {bulkDeleteMessage}
+        </div>
+
+      )}
+
+
       {overrideError && (
 
         <div className="settings-status-message settings-status-error">
@@ -123,13 +173,60 @@ function CatalogTableSection({
 
       ) : (
 
-        <div className="catalog-table-wrap">
+        <>
+
+          {selectedIds.size > 0 && (
+
+            <div className="catalog-selection-toolbar">
+
+              <span>
+                <strong>
+                  {selectedIds.size}
+                </strong>
+                {' selected'}
+              </span>
+
+
+              <button
+                type="button"
+                className="catalog-danger-button"
+                onClick={
+                  onDeleteSelected
+                }
+                disabled={
+                  bulkDeleting
+                }
+              >
+                {bulkDeleting
+                  ? 'Deleting...'
+                  : `Delete Selected (${selectedIds.size})`}
+              </button>
+
+            </div>
+
+          )}
+
+
+          <div className="catalog-table-wrap">
 
           <table className="catalog-table">
 
             <thead>
 
               <tr>
+
+                <th className="catalog-select-column">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all visible catalog records"
+                    checked={
+                      allVisibleSelected
+                    }
+                    onChange={
+                      onToggleSelectAllVisible
+                    }
+                  />
+                </th>
 
                 <th>
                   Item
@@ -174,6 +271,23 @@ function CatalogTableSection({
                       item.id
                     }
                   >
+
+                    <td className="catalog-select-column">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${item.canonicalName}`}
+                        checked={
+                          selectedIds.has(
+                            item.id
+                          )
+                        }
+                        onChange={() =>
+                          onToggleSelected(
+                            item.id
+                          )
+                        }
+                      />
+                    </td>
 
                     <td>
 
@@ -452,7 +566,9 @@ function CatalogTableSection({
 
           </table>
 
-        </div>
+          </div>
+
+        </>
 
       )}
     </>

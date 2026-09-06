@@ -1787,6 +1787,22 @@ function HomePage() {
 
 
           <Link
+            to="/rankings"
+            className="home-utility-link"
+          >
+
+            <span className="home-utility-icon">
+              ⇄
+            </span>
+
+            <span>
+              Rankings
+            </span>
+
+          </Link>
+
+
+          <Link
             to="/playlists"
             className="home-utility-link"
           >

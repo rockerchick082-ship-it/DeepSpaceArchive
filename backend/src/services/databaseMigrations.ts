@@ -13,7 +13,7 @@ import {
 
 
 export const applicationDatabaseSchemaVersion =
-  2
+  3
 
 
 export const catalogDatabaseSchemaVersion =
@@ -494,6 +494,63 @@ function applicationMigrationV2(
 }
 
 
+function applicationMigrationV3(
+  database: DatabaseSync
+) {
+
+  database.exec(`
+    BEGIN IMMEDIATE;
+
+    CREATE TABLE IF NOT EXISTS ranking_vote (
+
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+      category TEXT NOT NULL,
+
+      character TEXT NOT NULL,
+
+      item_a TEXT NOT NULL,
+
+      item_b TEXT NOT NULL,
+
+      winner TEXT NOT NULL,
+
+      created_at TEXT NOT NULL,
+
+      updated_at TEXT NOT NULL,
+
+      UNIQUE (
+        category,
+        character,
+        item_a,
+        item_b
+      ),
+
+      CHECK (item_a <> item_b),
+
+      CHECK (
+        winner = item_a
+        OR winner = item_b
+      )
+
+    );
+
+
+    CREATE INDEX IF NOT EXISTS
+      idx_ranking_vote_selection
+    ON ranking_vote(
+      category,
+      character
+    );
+
+
+    PRAGMA user_version = 3;
+    COMMIT;
+  `)
+
+}
+
+
 function getTableSql(
   database: DatabaseSync,
   tableName: string
@@ -949,6 +1006,17 @@ const applicationMigrations:
 
     run:
       applicationMigrationV2,
+  },
+
+  {
+    version:
+      3,
+
+    name:
+      'Add persistent pairwise ranking votes',
+
+    run:
+      applicationMigrationV3,
   },
 
 ]

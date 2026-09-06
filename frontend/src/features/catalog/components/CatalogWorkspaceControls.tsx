@@ -24,6 +24,7 @@ type CatalogWorkspaceControlsProps = {
   effectiveIncludedCategories: string[]
   includedCategorySet: ReadonlySet<string>
   bulkMatchLoading: boolean
+  matching: boolean
   itemCount: number
 
   onSearchTextChange:
@@ -42,6 +43,9 @@ type CatalogWorkspaceControlsProps = {
     (value: string) => void
 
   onOpenBulkMatch:
+    () => void
+
+  onAutoMatch:
     () => void
 
   onOpenNewRecord:
@@ -78,6 +82,7 @@ function CatalogWorkspaceControls({
   effectiveIncludedCategories,
   includedCategorySet,
   bulkMatchLoading,
+  matching,
   itemCount,
   onSearchTextChange,
   onCharacterChange,
@@ -85,6 +90,7 @@ function CatalogWorkspaceControls({
   onRarityChange,
   onFileFilterChange,
   onOpenBulkMatch,
+  onAutoMatch,
   onOpenNewRecord,
   onToggleIncludedCategory,
   onIncludeAllArchiveCategories,
@@ -482,6 +488,24 @@ function CatalogWorkspaceControls({
             {bulkMatchLoading
               ? 'Loading Matches...'
               : 'View All Filtered Matches'}
+          </button>
+
+
+          <button
+            type="button"
+            className="catalog-secondary-button"
+            onClick={
+              onAutoMatch
+            }
+            disabled={
+              matching ||
+              (stats?.totalItems ?? 0) ===
+                0
+            }
+          >
+            {matching
+              ? 'Matching...'
+              : 'Auto-Match Files'}
           </button>
 
 

@@ -71,6 +71,17 @@ type BackupPlaylist = {
 }
 
 
+type BackupRankingVote = {
+  category: string
+  character: string
+  itemA: string
+  itemB: string
+  winner: string
+  createdAt: string
+  updatedAt: string
+}
+
+
 type ApplicationState = {
   backupFormat: string
   backupVersion: number
@@ -86,6 +97,9 @@ type ApplicationState = {
 
   playlists:
     BackupPlaylist[]
+
+  rankingVotes?:
+    BackupRankingVote[]
 }
 
 
@@ -1869,6 +1883,104 @@ export async function restoreArchiveBackupMerge(
         )
 
       }
+
+    }
+
+
+    /*
+     * ===================================
+     * RANKING VOTES
+     * ===================================
+     * Backup v1/v2 files created before rankings simply omit this field.
+     * For a matching pair, keep whichever vote was updated most recently.
+     */
+
+    const upsertRankingVote =
+      database.prepare(`
+        INSERT INTO ranking_vote (
+          category,
+          character,
+          item_a,
+          item_b,
+          winner,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (
+          category,
+          character,
+          item_a,
+          item_b
+        )
+        DO UPDATE SET
+          winner = CASE
+            WHEN excluded.updated_at > ranking_vote.updated_at
+              THEN excluded.winner
+            ELSE ranking_vote.winner
+          END,
+          created_at = CASE
+            WHEN excluded.created_at < ranking_vote.created_at
+              THEN excluded.created_at
+            ELSE ranking_vote.created_at
+          END,
+          updated_at = CASE
+            WHEN excluded.updated_at > ranking_vote.updated_at
+              THEN excluded.updated_at
+            ELSE ranking_vote.updated_at
+          END
+      `)
+
+
+    for (
+      const backupVote
+      of applicationState.rankingVotes ?? []
+    ) {
+
+      if (
+        !backupVote.category ||
+        !backupVote.character ||
+        !backupVote.itemA ||
+        !backupVote.itemB ||
+        (
+          backupVote.winner !==
+            backupVote.itemA &&
+          backupVote.winner !==
+            backupVote.itemB
+        )
+      ) {
+
+        continue
+
+      }
+
+
+      const [
+        itemA,
+        itemB,
+      ] =
+        backupVote.itemA.localeCompare(
+          backupVote.itemB
+        ) <= 0
+          ? [
+              backupVote.itemA,
+              backupVote.itemB,
+            ]
+          : [
+              backupVote.itemB,
+              backupVote.itemA,
+            ]
+
+
+      upsertRankingVote.run(
+        backupVote.category,
+        backupVote.character,
+        itemA,
+        itemB,
+        backupVote.winner,
+        backupVote.createdAt,
+        backupVote.updatedAt
+      )
 
     }
 

@@ -1165,6 +1165,88 @@ export function deleteCatalogItem(
 }
 
 
+export function deleteCatalogItems(
+  ids: number[]
+) {
+
+  const uniqueIds =
+    Array.from(
+      new Set(
+        ids.filter(
+          (id) =>
+            Number.isInteger(
+              id
+            ) &&
+            id > 0
+        )
+      )
+    )
+
+
+  if (
+    uniqueIds.length ===
+      0
+  ) {
+
+    return 0
+
+  }
+
+
+  const statement =
+    database.prepare(`
+      DELETE FROM catalog_item
+      WHERE id = ?
+    `)
+
+
+  let deleted =
+    0
+
+
+  database.exec(
+    'BEGIN IMMEDIATE'
+  )
+
+
+  try {
+
+    for (
+      const id
+      of uniqueIds
+    ) {
+
+      deleted +=
+        Number(
+          statement.run(
+            id
+          ).changes
+        )
+
+    }
+
+
+    database.exec(
+      'COMMIT'
+    )
+
+
+    return deleted
+
+  } catch (error) {
+
+    database.exec(
+      'ROLLBACK'
+    )
+
+
+    throw error
+
+  }
+
+}
+
+
 export function listCatalogFileMatches(
   catalogItemId: number
 ) {

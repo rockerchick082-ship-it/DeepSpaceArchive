@@ -47,6 +47,7 @@ import * as backupRouteModule from './routes/backupRoutes'
 import * as libraryHealthRouteModule from './routes/libraryHealthRoutes'
 import * as thumbnailMaintenanceRouteModule from './routes/thumbnailMaintenanceRoutes'
 import * as databaseMaintenanceRouteModule from './routes/databaseMaintenanceRoutes'
+import * as rankingRouteModule from './routes/rankingRoutes'
 import * as systemInfoRouteModule from './routes/systemInfoRoutes'
 import * as catalogRouteModule from './routes/catalogRoutes'
 import * as galleryRouteModule from './routes/GalleryRoutes'
@@ -308,6 +309,13 @@ const setupRoutes =
   )
 
 
+const rankingRoutes =
+  resolveRouter(
+    rankingRouteModule,
+    'rankingRoutes'
+  )
+
+
 /*
  * ========================================
  * GLOBAL MIDDLEWARE
@@ -336,6 +344,12 @@ app.use(
 app.use(
   '/api/playlists',
   playlistRoutes
+)
+
+
+app.use(
+  '/api/rankings',
+  rankingRoutes
 )
 
 

@@ -23,6 +23,7 @@ import FavoritesPage from './pages/FavoritesPage'
 import ContinueWatchingPage from './pages/ContinueWatchingPage'
 import HistoryPage from './pages/HistoryPage'
 import StatsPage from './pages/StatsPage'
+import RankingPage from './pages/RankingPage'
 
 import PlaylistsPage from './pages/PlaylistsPage'
 import PlaylistDetailPage from './pages/PlaylistDetailPage'
@@ -50,6 +51,7 @@ import LibraryStatusPage from './pages/LibraryStatusPage'
 import MetadataHealthPage from './pages/MetadataHealthPage'
 import ThumbnailCachePage from './pages/ThumbnailCachePage'
 import DatabaseMaintenancePage from './pages/DatabaseMaintenancePage'
+import PersonalDataPage from './pages/PersonalDataPage'
 
 import AboutPage from './pages/AboutPage'
 import MetadataCatalogPage from './pages/MetadataCatalogPage'
@@ -2500,6 +2502,14 @@ function App() {
 
 
         <Route
+          path="/rankings"
+          element={
+            <RankingPage />
+          }
+        />
+
+
+        <Route
           path="/playlists"
           element={
             <PlaylistsPage />
@@ -2611,6 +2621,12 @@ function App() {
   path="/settings/database"
   element={
     <DatabaseMaintenancePage />
+  }
+/>
+<Route
+  path="/settings/personal-data"
+  element={
+    <PersonalDataPage />
   }
 />
 <Route

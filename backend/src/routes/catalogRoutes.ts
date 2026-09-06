@@ -12,6 +12,7 @@ import path from 'node:path'
 import {
   createCatalogItem,
   deleteCatalogItem,
+  deleteCatalogItems,
   getCatalogItem,
   getCatalogStats,
   linkCatalogFile,
@@ -2492,6 +2493,119 @@ router.put(
     response.json(
       item
     )
+
+  }
+)
+
+
+router.post(
+  '/bulk-delete',
+  (request, response) => {
+
+    const rawIds: unknown[] =
+      Array.isArray(
+        request.body?.ids
+      )
+        ? request.body.ids as unknown[]
+        : []
+
+
+    const ids =
+      rawIds.reduce<number[]>(
+        (result, value: unknown) => {
+
+          const id =
+            Number(
+              value
+            )
+
+
+          if (
+            Number.isInteger(
+              id
+            ) &&
+            id > 0 &&
+            !result.includes(
+              id
+            )
+          ) {
+
+            result.push(
+              id
+            )
+
+          }
+
+
+          return result
+
+        },
+        []
+      )
+
+
+    if (
+      ids.length ===
+        0
+    ) {
+
+      response.status(400).json({
+        error:
+          'At least one valid catalog item ID is required',
+      })
+
+      return
+
+    }
+
+
+    if (
+      ids.length >
+        1000
+    ) {
+
+      response.status(400).json({
+        error:
+          'No more than 1000 catalog records can be deleted at once',
+      })
+
+      return
+
+    }
+
+
+    try {
+
+      const deleted =
+        deleteCatalogItems(
+          ids
+        )
+
+
+      response.json({
+        success:
+          true,
+
+        requested:
+          ids.length,
+
+        deleted,
+      })
+
+    } catch (error) {
+
+      console.error(
+        'Unable to bulk delete catalog items:',
+        error
+      )
+
+
+      response.status(500).json({
+        error:
+          'Unable to delete the selected catalog records',
+      })
+
+    }
 
   }
 )

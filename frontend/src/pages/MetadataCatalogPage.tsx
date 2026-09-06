@@ -25,6 +25,7 @@ import type {
 
 import {
   deleteCatalogRecord,
+  deleteCatalogRecords,
   fetchBulkMatchOptions,
   fetchBulkOverridePreview,
   fetchAllCatalogItemIds,
@@ -572,6 +573,33 @@ function MetadataCatalogPage() {
   const [
     bulkMatchMessage,
     setBulkMatchMessage,
+  ] =
+    useState(
+      ''
+    )
+
+
+  const [
+    selectedCatalogIds,
+    setSelectedCatalogIds,
+  ] =
+    useState<Set<number>>(
+      new Set()
+    )
+
+
+  const [
+    bulkDeleting,
+    setBulkDeleting,
+  ] =
+    useState(
+      false
+    )
+
+
+  const [
+    bulkDeleteMessage,
+    setBulkDeleteMessage,
   ] =
     useState(
       ''
@@ -1683,6 +1711,203 @@ function MetadataCatalogPage() {
   }
 
 
+  function toggleCatalogSelection(
+    itemId: number
+  ) {
+
+    setSelectedCatalogIds(
+      (current) => {
+
+        const next =
+          new Set(
+            current
+          )
+
+
+        if (
+          next.has(
+            itemId
+          )
+        ) {
+
+          next.delete(
+            itemId
+          )
+
+        } else {
+
+          next.add(
+            itemId
+          )
+
+        }
+
+
+        return next
+
+      }
+    )
+
+
+    setBulkDeleteMessage(
+      ''
+    )
+
+  }
+
+
+  function toggleAllVisibleCatalogSelection() {
+
+    setSelectedCatalogIds(
+      (current) => {
+
+        const next =
+          new Set(
+            current
+          )
+
+
+        const allVisibleSelected =
+          items.length >
+            0 &&
+          items.every(
+            (item) =>
+              next.has(
+                item.id
+              )
+          )
+
+
+        for (
+          const item
+          of items
+        ) {
+
+          if (
+            allVisibleSelected
+          ) {
+
+            next.delete(
+              item.id
+            )
+
+          } else {
+
+            next.add(
+              item.id
+            )
+
+          }
+
+        }
+
+
+        return next
+
+      }
+    )
+
+
+    setBulkDeleteMessage(
+      ''
+    )
+
+  }
+
+
+  async function deleteSelectedCatalogRecords() {
+
+    const ids =
+      Array.from(
+        selectedCatalogIds
+      )
+
+
+    if (
+      ids.length ===
+        0
+    ) {
+
+      return
+
+    }
+
+
+    const confirmed =
+      window.confirm(
+        `Delete ${ids.length} selected catalog ${ids.length === 1 ? 'record' : 'records'}?\n\nThis also removes file-match and Memory-link relationships attached to those catalog records.`
+      )
+
+
+    if (
+      !confirmed
+    ) {
+
+      return
+
+    }
+
+
+    try {
+
+      setBulkDeleting(
+        true
+      )
+
+
+      setBulkDeleteMessage(
+        ''
+      )
+
+
+      setError(
+        ''
+      )
+
+
+      const result =
+        await deleteCatalogRecords(
+          ids
+        )
+
+
+      setSelectedCatalogIds(
+        new Set()
+      )
+
+
+      setBulkDeleteMessage(
+        `${result.deleted} catalog ${result.deleted === 1 ? 'record' : 'records'} deleted.`
+      )
+
+
+      await loadCatalog()
+
+    } catch (deleteError) {
+
+      console.error(
+        deleteError
+      )
+
+
+      setError(
+        deleteError instanceof
+          Error
+          ? deleteError.message
+          : 'The selected catalog records could not be deleted.'
+      )
+
+    } finally {
+
+      setBulkDeleting(
+        false
+      )
+
+    }
+
+  }
+
+
   async function deleteRecord(
     item: CatalogItem
   ) {
@@ -1706,6 +1931,26 @@ function MetadataCatalogPage() {
 
       await deleteCatalogRecord(
         item.id
+      )
+
+
+      setSelectedCatalogIds(
+        (current) => {
+
+          const next =
+            new Set(
+              current
+            )
+
+
+          next.delete(
+            item.id
+          )
+
+
+          return next
+
+        }
       )
 
 
@@ -4041,6 +4286,16 @@ function MetadataCatalogPage() {
     category: string
   ) {
 
+    setSelectedCatalogIds(
+      new Set()
+    )
+
+
+    setBulkDeleteMessage(
+      ''
+    )
+
+
     setCatalogPage(
       1
     )
@@ -4084,6 +4339,16 @@ function MetadataCatalogPage() {
 
   function includeAllArchiveCategories() {
 
+    setSelectedCatalogIds(
+      new Set()
+    )
+
+
+    setBulkDeleteMessage(
+      ''
+    )
+
+
     setCatalogPage(
       1
     )
@@ -4110,6 +4375,16 @@ function MetadataCatalogPage() {
     value: string
   ) {
 
+    setSelectedCatalogIds(
+      new Set()
+    )
+
+
+    setBulkDeleteMessage(
+      ''
+    )
+
+
     setCatalogPage(
       1
     )
@@ -4125,6 +4400,16 @@ function MetadataCatalogPage() {
   function changeCharacter(
     value: string
   ) {
+
+    setSelectedCatalogIds(
+      new Set()
+    )
+
+
+    setBulkDeleteMessage(
+      ''
+    )
+
 
     setCatalogPage(
       1
@@ -4142,6 +4427,16 @@ function MetadataCatalogPage() {
     value: string
   ) {
 
+    setSelectedCatalogIds(
+      new Set()
+    )
+
+
+    setBulkDeleteMessage(
+      ''
+    )
+
+
     setCatalogPage(
       1
     )
@@ -4157,6 +4452,16 @@ function MetadataCatalogPage() {
   function changeRarity(
     value: string
   ) {
+
+    setSelectedCatalogIds(
+      new Set()
+    )
+
+
+    setBulkDeleteMessage(
+      ''
+    )
+
 
     setCatalogPage(
       1
@@ -4174,6 +4479,16 @@ function MetadataCatalogPage() {
     value: string
   ) {
 
+    setSelectedCatalogIds(
+      new Set()
+    )
+
+
+    setBulkDeleteMessage(
+      ''
+    )
+
+
     setCatalogPage(
       1
     )
@@ -4189,6 +4504,16 @@ function MetadataCatalogPage() {
   function changeCatalogPage(
     nextPage: number
   ) {
+
+    setSelectedCatalogIds(
+      new Set()
+    )
+
+
+    setBulkDeleteMessage(
+      ''
+    )
+
 
     setCatalogPage(
       Math.min(
@@ -4264,17 +4589,7 @@ function MetadataCatalogPage() {
 
     <main className="archive-page">
 
-      <CatalogPageIntro
-        matching={
-          matching
-        }
-        stats={
-          stats
-        }
-        onAutoMatch={() =>
-          void runAutoMatch()
-        }
-      />
+      <CatalogPageIntro />
 
 
       <section className="catalog-page-content">
@@ -4386,6 +4701,9 @@ function MetadataCatalogPage() {
           bulkMatchLoading={
             bulkMatchLoading
           }
+          matching={
+            matching
+          }
           itemCount={
             catalogCount
           }
@@ -4406,6 +4724,9 @@ function MetadataCatalogPage() {
           }
           onOpenBulkMatch={() =>
             void openBulkMatchView()
+          }
+          onAutoMatch={() =>
+            void runAutoMatch()
           }
           onOpenNewRecord={
             openNewRecord
@@ -4468,6 +4789,9 @@ function MetadataCatalogPage() {
           bulkMatchMessage={
             bulkMatchMessage
           }
+          bulkDeleteMessage={
+            bulkDeleteMessage
+          }
           overrideError={
             overrideError
           }
@@ -4485,6 +4809,21 @@ function MetadataCatalogPage() {
           }
           relationshipLoadingId={
             relationshipLoadingId
+          }
+          selectedIds={
+            selectedCatalogIds
+          }
+          bulkDeleting={
+            bulkDeleting
+          }
+          onToggleSelected={
+            toggleCatalogSelection
+          }
+          onToggleSelectAllVisible={
+            toggleAllVisibleCatalogSelection
+          }
+          onDeleteSelected={() =>
+            void deleteSelectedCatalogRecords()
           }
           onOpenMatchReview={(item) =>
             void openMatchReview(

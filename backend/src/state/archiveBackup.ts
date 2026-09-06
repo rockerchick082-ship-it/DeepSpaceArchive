@@ -44,6 +44,17 @@ type PlaylistBackup = {
 }
 
 
+type RankingVoteBackup = {
+  category: string
+  character: string
+  itemA: string
+  itemB: string
+  winner: string
+  createdAt: string
+  updatedAt: string
+}
+
+
 export type DeepSpaceArchiveBackup = {
 
   backupFormat:
@@ -68,6 +79,9 @@ export type DeepSpaceArchiveBackup = {
 
   playlists:
     PlaylistBackup[]
+
+  rankingVotes:
+    RankingVoteBackup[]
 }
 
 
@@ -98,6 +112,17 @@ type PlaylistItemDatabaseRow = {
   relative_path: string
   position: number
   added_at: string
+}
+
+
+type RankingVoteDatabaseRow = {
+  category: string
+  character: string
+  item_a: string
+  item_b: string
+  winner: string
+  created_at: string
+  updated_at: string
 }
 
 
@@ -293,6 +318,60 @@ export function createArchiveBackup():
       )
 
 
+    /* =====================================
+       RANKING VOTES
+    ====================================== */
+
+    const rankingVoteRows =
+      database
+        .prepare(`
+          SELECT
+            category,
+            character,
+            item_a,
+            item_b,
+            winner,
+            created_at,
+            updated_at
+          FROM ranking_vote
+          ORDER BY
+            category,
+            character,
+            item_a,
+            item_b
+        `)
+        .all() as
+          unknown as
+          RankingVoteDatabaseRow[]
+
+
+    const rankingVotes =
+      rankingVoteRows.map(
+        (row) => ({
+          category:
+            row.category,
+
+          character:
+            row.character,
+
+          itemA:
+            row.item_a,
+
+          itemB:
+            row.item_b,
+
+          winner:
+            row.winner,
+
+          createdAt:
+            row.created_at,
+
+          updatedAt:
+            row.updated_at,
+        })
+      )
+
+
     return {
 
       backupFormat:
@@ -318,6 +397,8 @@ export function createArchiveBackup():
       archiveState,
 
       playlists,
+
+      rankingVotes,
 
     }
 

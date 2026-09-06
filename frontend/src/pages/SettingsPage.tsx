@@ -197,6 +197,23 @@ const settingsGroups:
           tag:
             'DATABASE',
         },
+
+        {
+          to:
+            '/settings/personal-data',
+
+          icon:
+            '⌫',
+
+          title:
+            'Personal Data',
+
+          description:
+            'Clear favorites, ratings, watch history, progress, playlists, and ranking votes while preserving catalog file matches.',
+
+          tag:
+            'RESET',
+        },
       ],
     },
 

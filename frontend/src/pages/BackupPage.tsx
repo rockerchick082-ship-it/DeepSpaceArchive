@@ -276,6 +276,7 @@ function BackupPage() {
             <div className="backup-v2-includes">
               <span>✓ Watch state, favorites &amp; ratings</span>
               <span>✓ Playlists and playlist order</span>
+              <span>✓ Pairwise ranking votes</span>
               <span>✓ Metadata Catalog records</span>
               <span>✓ Catalog file matches</span>
               <span>✓ Archive ↔ Memory relationships</span>
@@ -306,7 +307,7 @@ function BackupPage() {
             </div>
 
             <p className="backup-v2-description">
-              A small human-readable export of watch state and playlists only.
+              A small human-readable export of watch state, playlists, and ranking votes.
               It does not contain Metadata Catalog data, sidecars, or custom artwork.
             </p>
 
@@ -315,6 +316,7 @@ function BackupPage() {
               <span>✓ Watch progress &amp; history</span>
               <span>✓ Lifetime play totals</span>
               <span>✓ Playlists</span>
+              <span>✓ Pairwise ranking votes</span>
             </div>
 
             <button

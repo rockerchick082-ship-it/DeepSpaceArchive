@@ -2,23 +2,8 @@ import {
   Link,
 } from 'react-router-dom'
 
-import type {
-  CatalogStats,
-} from '../catalogTypes'
 
-
-type CatalogPageIntroProps = {
-  matching: boolean
-  stats: CatalogStats | null
-  onAutoMatch: () => void
-}
-
-
-function CatalogPageIntro({
-  matching,
-  stats,
-  onAutoMatch,
-}: CatalogPageIntroProps) {
+function CatalogPageIntro() {
 
   return (
     <>
@@ -66,28 +51,6 @@ function CatalogPageIntro({
             and source data independently
             from the files in your library.
           </p>
-
-        </div>
-
-
-        <div className="catalog-heading-actions">
-
-          <button
-            type="button"
-            className="catalog-secondary-button"
-            onClick={
-              onAutoMatch
-            }
-            disabled={
-              matching ||
-              (stats?.totalItems ?? 0) ===
-                0
-            }
-          >
-            {matching
-              ? 'Matching...'
-              : 'Auto-Match Files'}
-          </button>
 
         </div>
 

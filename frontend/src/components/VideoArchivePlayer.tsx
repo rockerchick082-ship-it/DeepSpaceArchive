@@ -369,6 +369,24 @@ function VideoArchivePlayer({
     searchParams.get('file')
 
 
+  const returnOverride =
+    searchParams.get(
+      'return'
+    )
+
+
+  const resolvedReturnPath =
+    returnOverride &&
+    returnOverride.startsWith(
+      '/'
+    ) &&
+    !returnOverride.startsWith(
+      '//'
+    )
+      ? returnOverride
+      : returnPath
+
+
   const isMobileApp =
     typeof window !==
       'undefined' &&
@@ -496,6 +514,18 @@ function VideoArchivePlayer({
 
   const lastTrackedTimeRef =
     useRef(0)
+
+
+  const lastTrackedWallClockRef =
+    useRef(0)
+
+
+  const backgroundPlaybackDesiredRef =
+    useRef(false)
+
+
+  const backgroundResumeAttemptedRef =
+    useRef(false)
 
 
   /*
@@ -1536,19 +1566,46 @@ useEffect(
       lastTrackedTimeRef.current
 
 
+    const now =
+      Date.now()
+
+
+    const wallClockDelta =
+      Math.max(
+        0,
+        (
+          now -
+          lastTrackedWallClockRef.current
+        ) /
+        1000
+      )
+
+
     const delta =
       currentTime -
       previousTime
 
 
     /*
-     * timeupdate normally advances in small increments.
-     * Ignore negative/large jumps so seeking is not counted
-     * as watched time.
+     * Seeking handlers reset the tracking origin, so normal playback can be
+     * measured from media time. When a browser throttles timeupdate while the
+     * page is hidden, a legitimate playback delta can be much larger than the
+     * old three-second cap. Accept that larger jump only when wall-clock time
+     * advanced by roughly the same amount, which avoids counting seeks as
+     * watched time while keeping background listening accurate.
      */
-    if (
+    const believablePlaybackDelta =
       delta >= 0 &&
-      delta <= 3
+      !seekingRef.current &&
+      (
+        delta <= 3 ||
+        delta <=
+          wallClockDelta + 3
+      )
+
+
+    if (
+      believablePlaybackDelta
     ) {
 
       pendingWatchedSecondsRef.current +=
@@ -1559,6 +1616,49 @@ useEffect(
 
     lastTrackedTimeRef.current =
       currentTime
+
+
+    lastTrackedWallClockRef.current =
+      now
+
+
+    if (
+      typeof navigator !==
+        'undefined' &&
+      'mediaSession' in
+        navigator &&
+      Number.isFinite(
+        video.duration
+      ) &&
+      video.duration > 0
+    ) {
+
+      try {
+
+        navigator.mediaSession
+          .setPositionState({
+            duration:
+              video.duration,
+
+            playbackRate:
+              video.playbackRate ||
+              1,
+
+            position:
+              Math.min(
+                Math.max(
+                  currentTime,
+                  0
+                ),
+                video.duration
+              ),
+          })
+
+      } catch {
+        // Some embedded browsers expose Media Session without position state.
+      }
+
+    }
 
 
     /*
@@ -1586,6 +1686,10 @@ useEffect(
 
     lastTrackedTimeRef.current =
       video.currentTime
+
+
+    lastTrackedWallClockRef.current =
+      Date.now()
 
   }
 
@@ -2016,6 +2120,345 @@ useEffect(
   ])
 
 
+  useEffect(
+    () => {
+
+      if (
+        !item ||
+        !relativePath ||
+        typeof navigator ===
+          'undefined' ||
+        !('mediaSession' in
+          navigator)
+      ) {
+
+        return
+
+      }
+
+
+      const mediaSession =
+        navigator.mediaSession
+
+      const artwork =
+        item.imageUrl
+          ? [
+              {
+                src:
+                  item.imageUrl,
+              },
+            ]
+          : undefined
+
+
+      try {
+
+        mediaSession.metadata =
+          new MediaMetadata({
+            title:
+              item.title,
+
+            artist:
+              item.character ||
+              'DeepSpace Archive',
+
+            album:
+              categoryLabel,
+
+            artwork,
+          })
+
+      } catch {
+        // Metadata is optional; transport controls can still work without it.
+      }
+
+
+      const currentVideo =
+        () =>
+          videoRef.current
+
+
+      mediaSession.setActionHandler(
+        'play',
+        () => {
+
+          const video =
+            currentVideo()
+
+
+          if (!video) {
+            return
+          }
+
+
+          backgroundPlaybackDesiredRef.current =
+            true
+
+
+          void video.play()
+
+        }
+      )
+
+
+      mediaSession.setActionHandler(
+        'pause',
+        () => {
+
+          backgroundPlaybackDesiredRef.current =
+            false
+
+
+          currentVideo()
+            ?.pause()
+
+        }
+      )
+
+
+      mediaSession.setActionHandler(
+        'seekbackward',
+        (details) => {
+
+          const video =
+            currentVideo()
+
+
+          if (!video) {
+            return
+          }
+
+
+          video.currentTime =
+            Math.max(
+              0,
+              video.currentTime -
+              (
+                details.seekOffset ??
+                10
+              )
+            )
+
+        }
+      )
+
+
+      mediaSession.setActionHandler(
+        'seekforward',
+        (details) => {
+
+          const video =
+            currentVideo()
+
+
+          if (!video) {
+            return
+          }
+
+
+          const duration =
+            Number.isFinite(
+              video.duration
+            )
+              ? video.duration
+              : Number.MAX_SAFE_INTEGER
+
+
+          video.currentTime =
+            Math.min(
+              duration,
+              video.currentTime +
+              (
+                details.seekOffset ??
+                10
+              )
+            )
+
+        }
+      )
+
+
+      mediaSession.setActionHandler(
+        'seekto',
+        (details) => {
+
+          const video =
+            currentVideo()
+
+
+          if (
+            !video ||
+            details.seekTime ===
+              undefined
+          ) {
+
+            return
+
+          }
+
+
+          video.currentTime =
+            details.seekTime
+
+        }
+      )
+
+
+      return () => {
+
+        for (
+          const action
+          of [
+            'play',
+            'pause',
+            'seekbackward',
+            'seekforward',
+            'seekto',
+          ] as const
+        ) {
+
+          try {
+
+            mediaSession.setActionHandler(
+              action,
+              null
+            )
+
+          } catch {
+            // Unsupported individual actions are safe to ignore.
+          }
+
+        }
+
+
+        mediaSession.metadata =
+          null
+
+        mediaSession.playbackState =
+          'none'
+
+      }
+
+    },
+    [
+      categoryLabel,
+      item,
+      relativePath,
+    ]
+  )
+
+
+  useEffect(
+    () => {
+
+      function handleVisibilityChange() {
+
+        const video =
+          videoRef.current
+
+
+        if (
+          !video ||
+          video.ended
+        ) {
+
+          return
+
+        }
+
+
+        if (
+          document.visibilityState ===
+          'hidden'
+        ) {
+
+          if (
+            !video.paused
+          ) {
+
+            backgroundPlaybackDesiredRef.current =
+              true
+
+            backgroundResumeAttemptedRef.current =
+              false
+
+
+            if (
+              isMobileApp &&
+              relativePath
+            ) {
+
+              writeMobileProgressCheckpoint(
+                categoryLabel,
+                relativePath,
+                video.currentTime,
+                Number.isFinite(
+                  video.duration
+                )
+                  ? video.duration
+                  : null
+              )
+
+            }
+
+          }
+
+
+          return
+
+        }
+
+
+        backgroundResumeAttemptedRef.current =
+          false
+
+
+        if (
+          backgroundPlaybackDesiredRef.current &&
+          video.paused
+        ) {
+
+          void video.play()
+            .catch(
+              (resumeError) => {
+
+                console.debug(
+                  'Background playback could not resume automatically:',
+                  resumeError
+                )
+
+              }
+            )
+
+        }
+
+      }
+
+
+      document.addEventListener(
+        'visibilitychange',
+        handleVisibilityChange
+      )
+
+
+      return () => {
+
+        document.removeEventListener(
+          'visibilitychange',
+          handleVisibilityChange
+        )
+
+      }
+
+    },
+    [
+      categoryLabel,
+      isMobileApp,
+      relativePath,
+    ]
+  )
+
+
   if (loading) {
 
     return (
@@ -2048,7 +2491,7 @@ useEffect(
 
 
         <Link
-          to={returnPath}
+          to={resolvedReturnPath}
           className="player-return-link"
         >
           Return to {categoryLabel}
@@ -2587,6 +3030,23 @@ useEffect(
 
   async function handleVideoEnded() {
 
+    backgroundPlaybackDesiredRef.current =
+      false
+
+
+    if (
+      typeof navigator !==
+        'undefined' &&
+      'mediaSession' in
+        navigator
+    ) {
+
+      navigator.mediaSession.playbackState =
+        'none'
+
+    }
+
+
     /*
      * Save the true end position first.
      *
@@ -2827,7 +3287,7 @@ useEffect(
             playlistMode &&
             playlistId !== null
               ? `/playlists/${playlistId}`
-              : returnPath
+              : resolvedReturnPath
           }
           className="back-button"
           onClick={() => {
@@ -2979,6 +3439,23 @@ useEffect(
           }
           onPlay={() => {
 
+            backgroundPlaybackDesiredRef.current =
+              true
+
+
+            if (
+              typeof navigator !==
+                'undefined' &&
+              'mediaSession' in
+                navigator
+            ) {
+
+              navigator.mediaSession.playbackState =
+                'playing'
+
+            }
+
+
             resetLocalTrackingPosition()
 
             void resetCompletedWatch()
@@ -3011,6 +3488,75 @@ useEffect(
 
           }}
           onPause={() => {
+
+            if (
+              document.visibilityState ===
+              'visible'
+            ) {
+
+              backgroundPlaybackDesiredRef.current =
+                false
+
+            }
+
+
+            if (
+              typeof navigator !==
+                'undefined' &&
+              'mediaSession' in
+                navigator
+            ) {
+
+              navigator.mediaSession.playbackState =
+                'paused'
+
+            }
+
+
+            if (
+              document.visibilityState ===
+                'hidden' &&
+              backgroundPlaybackDesiredRef.current &&
+              !backgroundResumeAttemptedRef.current &&
+              !seekingRef.current &&
+              !videoRef.current?.ended
+            ) {
+
+              backgroundResumeAttemptedRef.current =
+                true
+
+
+              window.setTimeout(
+                () => {
+
+                  const backgroundVideo =
+                    videoRef.current
+
+
+                  if (
+                    !backgroundVideo ||
+                    backgroundVideo.ended ||
+                    !backgroundPlaybackDesiredRef.current
+                  ) {
+
+                    return
+
+                  }
+
+
+                  void backgroundVideo.play()
+                    .catch(
+                      () => {
+                        // A native wrapper may intentionally suspend WebView media.
+                      }
+                    )
+
+                },
+                120
+              )
+
+            }
+
 
             /*
              * Seeking can briefly pause Android's media element.

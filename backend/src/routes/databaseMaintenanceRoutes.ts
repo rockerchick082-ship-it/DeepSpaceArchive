@@ -722,6 +722,18 @@ router.get(
         ).count
 
 
+      const rankingVoteCount =
+        (
+          database
+            .prepare(`
+              SELECT
+                COUNT(*) AS count
+              FROM ranking_vote
+            `)
+            .get() as CountRow
+        ).count
+
+
       const sqliteVersion =
         (
           database
@@ -908,6 +920,9 @@ router.get(
           playlistItems:
             playlistItemCount,
 
+          rankingVotes:
+            rankingVoteCount,
+
         },
 
         libraryConnected:
@@ -1061,6 +1076,304 @@ router.get(
     } finally {
 
       database.close()
+
+    }
+
+  }
+)
+
+
+/*
+ * ========================================
+ * CLEAR PERSONAL ARCHIVE DATA
+ * ========================================
+ *
+ * Removes user-specific viewing state while
+ * intentionally leaving the metadata catalog
+ * and catalog-file matches untouched. The
+ * offline event ledger is also preserved so
+ * already-processed mobile events cannot be
+ * replayed after a reset.
+ */
+
+router.post(
+  '/personal-data/reset',
+  async (
+    request,
+    response
+  ) => {
+
+    if (
+      request.body?.confirmation !==
+        'CLEAR PERSONAL DATA'
+    ) {
+
+      return response
+        .status(400)
+        .json({
+          error:
+            'Confirmation phrase does not match.',
+        })
+
+    }
+
+
+    if (
+      !await pathExists(
+        databasePath
+      )
+    ) {
+
+      return response
+        .status(500)
+        .json({
+          error:
+            'DeepSpace Archive database does not exist.',
+        })
+
+    }
+
+
+    let snapshotPath =
+      ''
+
+
+    try {
+
+      await fsPromises.mkdir(
+        safetyBackupDirectory,
+        {
+          recursive:
+            true,
+        }
+      )
+
+
+      const timestamp =
+        new Date()
+          .toISOString()
+          .replace(
+            /[:.]/g,
+            '-'
+          )
+
+
+      snapshotPath =
+        path.join(
+          safetyBackupDirectory,
+          `personal-data-reset-${timestamp}.db`
+        )
+
+
+      const snapshotDatabase =
+        new DatabaseSync(
+          databasePath
+        )
+
+
+      try {
+
+        const escaped =
+          snapshotPath.replace(
+            /'/g,
+            "''"
+          )
+
+
+        snapshotDatabase.exec(
+          `VACUUM INTO '${escaped}'`
+        )
+
+      } finally {
+
+        snapshotDatabase.close()
+
+      }
+
+
+      const database =
+        new DatabaseSync(
+          databasePath
+        )
+
+
+      try {
+
+        database.exec(`
+          PRAGMA foreign_keys = ON;
+        `)
+
+
+        const archiveState =
+          (
+            database
+              .prepare(`
+                SELECT COUNT(*) AS count
+                FROM archive_state
+              `)
+              .get() as CountRow
+          ).count
+
+
+        const favorites =
+          (
+            database
+              .prepare(`
+                SELECT COUNT(*) AS count
+                FROM archive_state
+                WHERE favorite = 1
+              `)
+              .get() as CountRow
+          ).count
+
+
+        const rated =
+          (
+            database
+              .prepare(`
+                SELECT COUNT(*) AS count
+                FROM archive_state
+                WHERE rating IS NOT NULL
+              `)
+              .get() as CountRow
+          ).count
+
+
+        const playlists =
+          (
+            database
+              .prepare(`
+                SELECT COUNT(*) AS count
+                FROM playlists
+              `)
+              .get() as CountRow
+          ).count
+
+
+        const playlistItems =
+          (
+            database
+              .prepare(`
+                SELECT COUNT(*) AS count
+                FROM playlist_items
+              `)
+              .get() as CountRow
+          ).count
+
+
+        const rankingVotes =
+          (
+            database
+              .prepare(`
+                SELECT COUNT(*) AS count
+                FROM ranking_vote
+              `)
+              .get() as CountRow
+          ).count
+
+
+        database.exec(
+          'BEGIN IMMEDIATE'
+        )
+
+
+        try {
+
+          database.exec(`
+            DELETE FROM playlist_items;
+            DELETE FROM playlists;
+            DELETE FROM ranking_vote;
+            DELETE FROM archive_state;
+            DELETE FROM sqlite_sequence
+            WHERE name IN (
+              'playlists',
+              'playlist_items',
+              'ranking_vote'
+            );
+          `)
+
+
+          database.exec(
+            'COMMIT'
+          )
+
+        } catch (error) {
+
+          database.exec(
+            'ROLLBACK'
+          )
+
+
+          throw error
+
+        }
+
+
+        return response.json({
+
+          success:
+            true,
+
+          deleted: {
+            archiveState,
+            favorites,
+            rated,
+            playlists,
+            playlistItems,
+            rankingVotes,
+          },
+
+          preserved: {
+            catalog:
+              true,
+            catalogFileMatches:
+              true,
+            archiveOfflineEventLedger:
+              true,
+          },
+
+          safetyBackup:
+            path.basename(
+              snapshotPath
+            ),
+
+          completedAt:
+            new Date()
+              .toISOString(),
+
+        })
+
+      } finally {
+
+        database.close()
+
+      }
+
+    } catch (error) {
+
+      console.error(
+        'Unable to clear personal archive data:',
+        error
+      )
+
+
+      if (
+        snapshotPath
+      ) {
+
+        console.error(
+          `Personal-data reset safety snapshot retained at: ${snapshotPath}`
+        )
+
+      }
+
+
+      return response
+        .status(500)
+        .json({
+          error:
+            'Unable to clear personal archive data.',
+        })
 
     }
 

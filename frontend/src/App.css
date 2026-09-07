@@ -30630,3 +30630,81 @@ html[data-dsa-pip="true"] .memory-video-player {
   white-space: normal;
   line-height: 1.45;
 }
+
+/* Android native audio-only playback keeps the media item active while hiding video. */
+.player-stage-audio-only {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255, 214, 88, 0.12), transparent 46%),
+    #090a0f;
+}
+
+.player-stage-audio-only .memory-video-player {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.player-audio-only-panel {
+  width: min(520px, calc(100% - 32px));
+  min-height: 180px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 26px;
+  border: 1px solid rgba(255, 214, 88, 0.28);
+  border-radius: 20px;
+  background: rgba(14, 15, 22, 0.92);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+}
+
+.player-audio-only-icon {
+  flex: 0 0 auto;
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 214, 88, 0.4);
+  border-radius: 50%;
+  background: rgba(255, 214, 88, 0.1);
+  color: #ffe38a;
+  font-size: 2rem;
+}
+
+.player-audio-only-panel > div {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.player-audio-only-panel strong {
+  font-size: 1.15rem;
+}
+
+.player-audio-only-panel small {
+  color: rgba(255, 255, 255, 0.62);
+  line-height: 1.45;
+}
+
+html[data-dsa-mobile="true"] .player-stage-audio-only {
+  min-height: 230px;
+}
+
+html[data-dsa-mobile="true"] .player-audio-only-panel {
+  width: calc(100% - 28px);
+  min-height: 160px;
+  gap: 14px;
+  padding: 20px 18px;
+  border-radius: 16px;
+}
+
+html[data-dsa-mobile="true"] .player-audio-only-icon {
+  width: 54px;
+  height: 54px;
+  font-size: 1.6rem;
+}

@@ -59,6 +59,12 @@ declare global {
         payloadJson: string
       ) => void
       clearPlaybackState?: () => void
+      startAudioOnlyPlayback?: (
+        payloadJson: string
+      ) => void
+      stopAudioOnlyPlayback?: () => string
+      getNativePlaybackState?: () => string
+      consumeNativePlaybackProgress?: () => string
     }
 
     Capacitor?: {
@@ -86,6 +92,119 @@ type VideoInfo = {
 }
 
 
+type NativePlaybackSnapshot = {
+  title: string
+  subtitle: string
+  category: string
+  relativePath: string
+  positionMs: number
+  durationMs: number
+  watchedMs: number
+  playing: boolean
+  audioOnly: boolean
+  completed: boolean
+  playbackRate: number
+}
+
+
+function parseNativePlaybackSnapshot(
+  raw: string | undefined
+): NativePlaybackSnapshot | null {
+
+  if (!raw) {
+    return null
+  }
+
+
+  try {
+
+    const parsed =
+      JSON.parse(
+        raw
+      ) as Partial<
+        NativePlaybackSnapshot
+      >
+
+
+    if (
+      typeof parsed.relativePath !==
+        'string'
+    ) {
+
+      return null
+    }
+
+
+    return {
+      title:
+        typeof parsed.title === 'string'
+          ? parsed.title
+          : '',
+      subtitle:
+        typeof parsed.subtitle === 'string'
+          ? parsed.subtitle
+          : '',
+      category:
+        typeof parsed.category === 'string'
+          ? parsed.category
+          : '',
+      relativePath:
+        parsed.relativePath,
+      positionMs:
+        Number.isFinite(
+          parsed.positionMs
+        )
+          ? Number(parsed.positionMs)
+          : 0,
+      durationMs:
+        Number.isFinite(
+          parsed.durationMs
+        )
+          ? Number(parsed.durationMs)
+          : 0,
+      watchedMs:
+        Number.isFinite(
+          parsed.watchedMs
+        )
+          ? Number(parsed.watchedMs)
+          : 0,
+      playing:
+        Boolean(parsed.playing),
+      audioOnly:
+        Boolean(parsed.audioOnly),
+      completed:
+        Boolean(parsed.completed),
+      playbackRate:
+        Number.isFinite(
+          parsed.playbackRate
+        )
+          ? Number(parsed.playbackRate)
+          : 1,
+    }
+
+  } catch {
+
+    return null
+  }
+}
+
+
+function readNativePlaybackSnapshot() {
+
+  try {
+
+    return parseNativePlaybackSnapshot(
+      window.DeepSpaceArchiveMobile
+        ?.getNativePlaybackState?.()
+    )
+
+  } catch {
+
+    return null
+  }
+}
+
+
 type PlaylistResponse = {
   items: Playlist[]
 }
@@ -108,7 +227,13 @@ type VideoArchivePlayerProps = {
 function updateNativePlaybackState(
   item: ArchiveItem,
   categoryLabel: string,
-  playing: boolean
+  playing: boolean,
+  playback?: {
+    relativePath?: string
+    positionSeconds?: number
+    durationSeconds?: number | null
+    playbackRate?: number
+  }
 ) {
 
   const nativeBridge =
@@ -138,6 +263,33 @@ function updateNativePlaybackState(
           item.character,
         category:
           categoryLabel,
+        relativePath:
+          playback?.relativePath ??
+          item.relativePath,
+        positionMs:
+          Math.max(
+            0,
+            Math.round(
+              (playback?.positionSeconds ?? 0) *
+              1000
+            )
+          ),
+        durationMs:
+          playback?.durationSeconds !== null &&
+          Number.isFinite(
+            playback?.durationSeconds
+          )
+            ? Math.max(
+                0,
+                Math.round(
+                  (playback?.durationSeconds ?? 0) *
+                  1000
+                )
+              )
+            : 0,
+        playbackRate:
+          playback?.playbackRate ??
+          1,
       })
     )
 
@@ -243,6 +395,59 @@ function getMobileOfflinePlaybackRuntime() {
     }
   ).DeepSpaceArchiveOfflinePlayback
 
+}
+
+
+function saveNativeSnapshotToMobileRuntime(
+  snapshot: NativePlaybackSnapshot | null
+) {
+
+  if (
+    !snapshot ||
+    !snapshot.category ||
+    !snapshot.relativePath
+  ) {
+
+    return
+  }
+
+
+  const mobileRuntime =
+    getMobileOfflinePlaybackRuntime()
+
+
+  if (!mobileRuntime) {
+    return
+  }
+
+
+  mobileRuntime.saveProgress({
+    category:
+      snapshot.category,
+    relativePath:
+      snapshot.relativePath,
+    progressSeconds:
+      Math.max(
+        0,
+        snapshot.completed &&
+        snapshot.durationMs > 0
+          ? snapshot.durationMs /
+            1000
+          : snapshot.positionMs /
+            1000
+      ),
+    durationSeconds:
+      snapshot.durationMs > 0
+        ? snapshot.durationMs /
+          1000
+        : null,
+    watchedSeconds:
+      Math.max(
+        0,
+        snapshot.watchedMs /
+        1000
+      ),
+  })
 }
 
 
@@ -580,6 +785,40 @@ function VideoArchivePlayer({
     useRef(false)
 
 
+  const lastNativePlaybackCheckpointRef =
+    useRef(0)
+
+
+  const initialAudioOnly =
+    (() => {
+
+      if (
+        !isMobileApp ||
+        !relativePath
+      ) {
+
+        return false
+      }
+
+
+      const snapshot =
+        readNativePlaybackSnapshot()
+
+
+      return Boolean(
+        snapshot?.audioOnly &&
+        snapshot.relativePath ===
+          relativePath
+      )
+    })()
+
+
+  const audioOnlyRef =
+    useRef(
+      initialAudioOnly
+    )
+
+
   /*
    * Accumulate watched time locally while playback is active.
    * We intentionally do NOT write to SQLite every few seconds;
@@ -654,6 +893,12 @@ function VideoArchivePlayer({
     useState(false)
 
 
+  const [audioOnly, setAudioOnly] =
+    useState(
+      initialAudioOnly
+    )
+
+
   const [
     mobileDownloaded,
     setMobileDownloaded,
@@ -678,6 +923,114 @@ function VideoArchivePlayer({
     useState(
       getInitialAutoPlayNext
     )
+
+  useEffect(
+    () => {
+
+      audioOnlyRef.current =
+        audioOnly
+
+    },
+    [audioOnly]
+  )
+
+
+  useEffect(
+    () => {
+
+      if (
+        !isMobileApp ||
+        !relativePath
+      ) {
+
+        audioOnlyRef.current =
+          false
+
+        const timer =
+          window.setTimeout(
+            () =>
+              setAudioOnly(
+                false
+              ),
+            0
+          )
+
+        return () =>
+          window.clearTimeout(
+            timer
+          )
+      }
+
+
+      let snapshot =
+        readNativePlaybackSnapshot()
+
+
+      if (
+        snapshot?.audioOnly &&
+        snapshot.relativePath &&
+        snapshot.relativePath !==
+          relativePath
+      ) {
+
+        try {
+
+          const consumed =
+            parseNativePlaybackSnapshot(
+              window.DeepSpaceArchiveMobile
+                ?.stopAudioOnlyPlayback?.()
+            )
+
+          saveNativeSnapshotToMobileRuntime(
+            consumed
+          )
+
+          snapshot =
+            null
+
+        } catch (error) {
+
+          console.error(
+            'Unable to finish the previous Android audio-only item:',
+            error
+          )
+        }
+      }
+
+
+      const activeForItem =
+        Boolean(
+          snapshot?.audioOnly &&
+          snapshot.relativePath ===
+            relativePath
+        )
+
+
+      audioOnlyRef.current =
+        activeForItem
+
+      const timer =
+        window.setTimeout(
+          () =>
+            setAudioOnly(
+              activeForItem
+            ),
+          0
+        )
+
+
+      return () =>
+        window.clearTimeout(
+          timer
+        )
+
+    },
+    [
+      isMobileApp,
+      relativePath,
+    ]
+  )
+
 
 useEffect(
   () => {
@@ -1720,6 +2073,41 @@ useEffect(
      */
     saveLocalResumeCheckpoint()
 
+
+    if (
+      isMobileApp &&
+      item &&
+      !audioOnlyRef.current &&
+      now -
+        lastNativePlaybackCheckpointRef.current >=
+        1000
+    ) {
+
+      lastNativePlaybackCheckpointRef.current =
+        now
+
+      updateNativePlaybackState(
+        item,
+        categoryLabel,
+        !video.paused &&
+          !video.ended,
+        {
+          relativePath,
+          positionSeconds:
+            currentTime,
+          durationSeconds:
+            Number.isFinite(
+              video.duration
+            )
+              ? video.duration
+              : null,
+          playbackRate:
+            video.playbackRate ||
+            1,
+        }
+      )
+    }
+
   }
 
 
@@ -1940,6 +2328,452 @@ useEffect(
   }
 
 
+  function nativePlaybackPayload(
+    playing: boolean,
+    hasVideo = true
+  ) {
+
+    const video =
+      videoRef.current
+
+
+    if (
+      !item ||
+      !relativePath
+    ) {
+
+      return null
+    }
+
+
+    return JSON.stringify({
+      playing,
+      hasVideo:
+        hasVideo &&
+        item.mediaType ===
+        'video',
+      title:
+        item.title,
+      character:
+        item.character,
+      category:
+        categoryLabel,
+      relativePath,
+      positionMs:
+        Math.max(
+          0,
+          Math.round(
+            (video?.currentTime ?? 0) *
+            1000
+          )
+        ),
+      durationMs:
+        video &&
+        Number.isFinite(
+          video.duration
+        )
+          ? Math.max(
+              0,
+              Math.round(
+                video.duration *
+                1000
+              )
+            )
+          : 0,
+      playbackRate:
+        video?.playbackRate ??
+        playbackSpeed,
+    })
+  }
+
+
+  const applyConsumedNativeProgress =
+    useCallback(
+      (
+        snapshot: NativePlaybackSnapshot | null
+      ) => {
+
+    const video =
+      videoRef.current
+
+
+    if (
+      !snapshot ||
+      !video ||
+      !relativePath ||
+      snapshot.relativePath !==
+        relativePath
+    ) {
+
+      return false
+    }
+
+
+    const watchedSeconds =
+      Math.max(
+        0,
+        snapshot.watchedMs /
+        1000
+      )
+
+
+    pendingWatchedSecondsRef.current +=
+      watchedSeconds
+
+
+    const durationSeconds =
+      snapshot.durationMs > 0
+        ? snapshot.durationMs /
+          1000
+        : (
+            Number.isFinite(
+              video.duration
+            )
+              ? video.duration
+              : null
+          )
+
+
+    const positionSeconds =
+      snapshot.completed &&
+      durationSeconds
+        ? durationSeconds
+        : Math.max(
+            0,
+            snapshot.positionMs /
+            1000
+          )
+
+
+    if (
+      Number.isFinite(
+        positionSeconds
+      )
+    ) {
+
+      video.currentTime =
+        durationSeconds
+          ? Math.min(
+              positionSeconds,
+              durationSeconds
+            )
+          : positionSeconds
+
+      lastTrackedTimeRef.current =
+        video.currentTime
+
+      lastTrackedWallClockRef.current =
+        Date.now()
+
+
+      if (
+        isMobileApp
+      ) {
+
+        writeMobileProgressCheckpoint(
+          categoryLabel,
+          relativePath,
+          video.currentTime,
+          durationSeconds
+        )
+      }
+    }
+
+
+        return true
+      },
+      [
+        categoryLabel,
+        isMobileApp,
+        relativePath,
+      ]
+    )
+
+
+  async function toggleAudioOnlyPlayback() {
+
+    const bridge =
+      window.DeepSpaceArchiveMobile
+
+    const video =
+      videoRef.current
+
+
+    if (
+      !isMobileApp ||
+      !bridge ||
+      !video ||
+      !item ||
+      !relativePath
+    ) {
+
+      return
+    }
+
+
+    if (
+      !audioOnlyRef.current
+    ) {
+
+      const payload =
+        nativePlaybackPayload(
+          true,
+          false
+        )
+
+
+      if (
+        !payload ||
+        !bridge.startAudioOnlyPlayback
+      ) {
+
+        return
+      }
+
+
+      backgroundPlaybackDesiredRef.current =
+        true
+
+      audioOnlyRef.current =
+        true
+
+      setAudioOnly(
+        true
+      )
+
+
+      bridge.startAudioOnlyPlayback(
+        payload
+      )
+
+
+      video.pause()
+
+
+      if (
+        typeof navigator !==
+          'undefined' &&
+        'mediaSession' in
+          navigator
+      ) {
+
+        navigator.mediaSession.playbackState =
+          'playing'
+      }
+
+
+      return
+    }
+
+
+    let snapshot:
+      NativePlaybackSnapshot | null =
+      null
+
+
+    try {
+
+      snapshot =
+        parseNativePlaybackSnapshot(
+          bridge.stopAudioOnlyPlayback?.()
+        )
+
+    } catch (error) {
+
+      console.error(
+        'Unable to return from Android audio-only playback:',
+        error
+      )
+    }
+
+
+    applyConsumedNativeProgress(
+      snapshot
+    )
+
+    audioOnlyRef.current =
+      false
+
+    setAudioOnly(
+      false
+    )
+
+
+    if (
+      snapshot?.completed
+    ) {
+
+      backgroundPlaybackDesiredRef.current =
+        false
+
+      await savePlaybackProgress()
+
+      return
+    }
+
+
+    backgroundPlaybackDesiredRef.current =
+      true
+
+
+    try {
+
+      await video.play()
+
+    } catch (playError) {
+
+      console.error(
+        'Unable to resume video after audio-only playback:',
+        playError
+      )
+    }
+  }
+
+
+
+
+  useEffect(
+    () => {
+
+      if (
+        !audioOnly ||
+        !isMobileApp ||
+        !relativePath
+      ) {
+
+        return
+      }
+
+
+      const bridge =
+        window.DeepSpaceArchiveMobile
+
+
+      if (
+        !bridge?.getNativePlaybackState
+      ) {
+
+        return
+      }
+
+
+      function syncNativeAudioProgress() {
+
+        const snapshot =
+          readNativePlaybackSnapshot()
+
+        const video =
+          videoRef.current
+
+
+        if (
+          !snapshot ||
+          !video ||
+          snapshot.relativePath !==
+            relativePath
+        ) {
+
+          return
+        }
+
+
+        const nativePosition =
+          Math.max(
+            0,
+            snapshot.positionMs /
+            1000
+          )
+
+
+        if (
+          Number.isFinite(
+            nativePosition
+          ) &&
+          Math.abs(
+            video.currentTime -
+            nativePosition
+          ) > 0.75
+        ) {
+
+          video.currentTime =
+            snapshot.durationMs > 0
+              ? Math.min(
+                  nativePosition,
+                  snapshot.durationMs /
+                  1000
+                )
+              : nativePosition
+
+          lastTrackedTimeRef.current =
+            video.currentTime
+
+          lastTrackedWallClockRef.current =
+            Date.now()
+        }
+
+
+        if (
+          snapshot.audioOnly &&
+          !snapshot.completed
+        ) {
+
+          return
+        }
+
+
+        const consumed =
+          parseNativePlaybackSnapshot(
+            bridge?.consumeNativePlaybackProgress?.()
+          )
+
+
+        applyConsumedNativeProgress(
+          consumed
+        )
+
+        audioOnlyRef.current =
+          false
+
+        setAudioOnly(
+          false
+        )
+
+        backgroundPlaybackDesiredRef.current =
+          false
+
+        saveOnPageHideRef.current()
+      }
+
+
+      syncNativeAudioProgress()
+
+
+      const timer =
+        window.setInterval(
+          syncNativeAudioProgress,
+          1000
+        )
+
+
+      return () => {
+
+        window.clearInterval(
+          timer
+        )
+      }
+
+    },
+    [
+      applyConsumedNativeProgress,
+      audioOnly,
+      isMobileApp,
+      relativePath,
+    ]
+  )
+
+
+
+
   /*
    * Keep the latest save callback in the ref from an
    * effect instead of mutating the ref during render.
@@ -2021,6 +2855,72 @@ useEffect(
       !relativePath
     ) {
       return
+    }
+
+
+    if (
+      isMobileApp
+    ) {
+
+      const nativeSnapshot =
+        readNativePlaybackSnapshot()
+
+
+      if (
+        nativeSnapshot?.audioOnly &&
+        nativeSnapshot.relativePath ===
+          relativePath
+      ) {
+
+        const nativePosition =
+          Math.max(
+            0,
+            nativeSnapshot.positionMs /
+            1000
+          )
+
+
+        if (
+          Number.isFinite(
+            nativePosition
+          )
+        ) {
+
+          video.currentTime =
+            nativeSnapshot.durationMs > 0
+              ? Math.min(
+                  nativePosition,
+                  nativeSnapshot.durationMs /
+                  1000
+                )
+              : nativePosition
+
+          lastTrackedTimeRef.current =
+            video.currentTime
+
+          lastProgressSaveRef.current =
+            video.currentTime
+        }
+
+
+        audioOnlyRef.current =
+          true
+
+        setAudioOnly(
+          true
+        )
+
+
+        if (
+          !video.paused
+        ) {
+
+          video.pause()
+        }
+
+
+        return
+      }
     }
 
 
@@ -2143,6 +3043,7 @@ useEffect(
       [
         archiveState,
         categoryLabel,
+        isMobileApp,
         relativePath,
         resetCompletedWatch,
       ]
@@ -2478,8 +3379,15 @@ useEffect(
 
       return () => {
 
-        window.DeepSpaceArchiveMobile
-          ?.clearPlaybackState?.()
+        if (
+          document.visibilityState ===
+            'visible' &&
+          !audioOnlyRef.current
+        ) {
+
+          window.DeepSpaceArchiveMobile
+            ?.clearPlaybackState?.()
+        }
 
         document.documentElement.removeAttribute(
           'data-dsa-pip'
@@ -2508,6 +3416,32 @@ useEffect(
 
           return
 
+        }
+
+
+        if (
+          audioOnlyRef.current
+        ) {
+
+          if (
+            isMobileApp &&
+            relativePath
+          ) {
+
+            writeMobileProgressCheckpoint(
+              categoryLabel,
+              relativePath,
+              video.currentTime,
+              Number.isFinite(
+                video.duration
+              )
+                ? video.duration
+                : null
+            )
+          }
+
+
+          return
         }
 
 
@@ -3572,20 +4506,69 @@ useEffect(
       </div>
 
 
-      <section className="player-stage">
+      <section
+        className={
+          audioOnly
+            ? 'player-stage player-stage-audio-only'
+            : 'player-stage'
+        }
+      >
+
+        {audioOnly && (
+
+          <div
+            className="player-audio-only-panel"
+            role="status"
+          >
+
+            <span
+              className="player-audio-only-icon"
+              aria-hidden="true"
+            >
+              ♫
+            </span>
+
+            <div>
+
+              <span className="archive-eyebrow">
+                AUDIO ONLY
+              </span>
+
+              <strong>
+                {currentItem.title}
+              </strong>
+
+              <small>
+                Video is hidden. Audio keeps playing through Android background controls.
+              </small>
+
+            </div>
+
+          </div>
+
+        )}
 
         <video
           ref={videoRef}
           className="memory-video-player"
           src={mediaUrl}
-          controls
-          autoPlay
+          controls={!audioOnly}
+          autoPlay={!audioOnly}
           playsInline
           preload="auto"
           onLoadedMetadata={
             restoreProgress
           }
           onPlay={() => {
+
+            if (
+              audioOnlyRef.current
+            ) {
+
+              videoRef.current?.pause()
+              return
+            }
+
 
             backgroundPlaybackDesiredRef.current =
               true
@@ -3606,10 +4589,30 @@ useEffect(
 
             if (item) {
 
+              const video =
+                videoRef.current
+
               updateNativePlaybackState(
                 item,
                 categoryLabel,
-                true
+                true,
+                {
+                  relativePath:
+                    currentRelativePath,
+                  positionSeconds:
+                    video?.currentTime ??
+                    0,
+                  durationSeconds:
+                    video &&
+                    Number.isFinite(
+                      video.duration
+                    )
+                      ? video.duration
+                      : null,
+                  playbackRate:
+                    video?.playbackRate ??
+                    playbackSpeed,
+                }
               )
 
             }
@@ -3647,6 +4650,34 @@ useEffect(
 
           }}
           onPause={() => {
+
+            if (
+              audioOnlyRef.current
+            ) {
+
+              backgroundPlaybackDesiredRef.current =
+                true
+
+
+              if (
+                typeof navigator !==
+                  'undefined' &&
+                'mediaSession' in
+                  navigator
+              ) {
+
+                navigator.mediaSession.playbackState =
+                  'playing'
+              }
+
+
+              saveLocalResumeCheckpoint(
+                true
+              )
+
+              return
+            }
+
 
             if (
               document.visibilityState ===
@@ -3722,10 +4753,30 @@ useEffect(
               !backgroundPlaybackDesiredRef.current
             ) {
 
+              const video =
+                videoRef.current
+
               updateNativePlaybackState(
                 item,
                 categoryLabel,
-                false
+                false,
+                {
+                  relativePath:
+                    currentRelativePath,
+                  positionSeconds:
+                    video?.currentTime ??
+                    0,
+                  durationSeconds:
+                    video &&
+                    Number.isFinite(
+                      video.duration
+                    )
+                      ? video.duration
+                      : null,
+                  playbackRate:
+                    video?.playbackRate ??
+                    playbackSpeed,
+                }
               )
 
             }
@@ -4263,6 +5314,33 @@ useEffect(
             : 'Off'}
 
         </button>
+
+
+        {isMobileApp && (
+
+          <button
+            type="button"
+            className={
+              audioOnly
+                ? 'player-toggle active'
+                : 'player-toggle'
+            }
+            onClick={() =>
+              void toggleAudioOnlyPlayback()
+            }
+            disabled={
+              !window.DeepSpaceArchiveMobile
+                ?.startAudioOnlyPlayback
+            }
+          >
+            ♫ Audio Only{' '}
+
+            {audioOnly
+              ? 'On'
+              : 'Off'}
+          </button>
+
+        )}
 
 
         {isMobileApp && (

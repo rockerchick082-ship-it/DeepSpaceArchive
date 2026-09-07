@@ -554,10 +554,14 @@ async function checkPage(
             false
 
 
+        /*
+         * Purge success means the rendered page cache was accepted for
+         * refresh. Do not require the page's displayed revision/update
+         * timestamp to change: generated wiki content can refresh without
+         * creating a new page revision.
+         */
         autoPurgeSucceeded =
-          !stale &&
-          fresh !==
-            null
+          true
 
       }
 
@@ -761,6 +765,137 @@ export async function checkWikiPageFreshness(
 
 
   return result
+
+}
+
+
+export async function ensureWikiPageFresh(
+  pageId: string
+): Promise<boolean> {
+
+  const page =
+    pages.find(
+      (candidate) =>
+        candidate.id ===
+        pageId
+    )
+
+
+  if (!page) {
+
+    throw new Error(
+      `Unknown wiki freshness page: ${pageId}`
+    )
+
+  }
+
+
+  /*
+   * This is intentionally page-specific rather than using the
+   * five-minute all-pages status cache. Supplemental catalog syncs
+   * need to guarantee that the exact generated page they are about
+   * to parse has had a chance to refresh.
+   */
+  const status =
+    await checkPage(
+      page,
+      true
+    )
+
+
+  if (
+    status.fresh ===
+    true
+  ) {
+
+    return true
+
+  }
+
+
+  /*
+   * A MediaWiki purge does not necessarily change the page revision
+   * timestamp. Generated/template-backed pages can therefore remain
+   * "old" according to the visible timestamp even though their
+   * rendered cache has been successfully purged. In that case the
+   * successful purge is the signal we need, not a newer revision.
+   */
+  if (
+    status.autoPurgeSucceeded ===
+    true
+  ) {
+
+    clearWikiPageFreshnessCache()
+
+    return true
+
+  }
+
+
+  /*
+   * Pages without the expected generated timestamp cannot be judged
+   * by age. Give them one explicit purge attempt and verify that the
+   * page can be fetched again before allowing a supplemental import
+   * to proceed.
+   */
+  if (
+    status.fresh ===
+    null
+  ) {
+
+    const purged =
+      await purgePage(
+        page.sourceUrl
+      )
+
+
+    if (!purged) {
+
+      return false
+
+    }
+
+
+    const retryDelays =
+      [1200, 2500, 5000]
+
+
+    for (
+      const delayMs
+      of retryDelays
+    ) {
+
+      await new Promise<void>(
+        (resolve) =>
+          setTimeout(
+            resolve,
+            delayMs
+          )
+      )
+
+
+      try {
+
+        await fetchPageHtml(
+          page.sourceUrl
+        )
+
+        clearWikiPageFreshnessCache()
+
+        return true
+
+      } catch {
+        // Keep retrying; wiki-generated caches can take a few seconds.
+      }
+
+    }
+
+  }
+
+
+  clearWikiPageFreshnessCache()
+
+  return false
 
 }
 

@@ -16,6 +16,10 @@ import type {
   CatalogItemInput,
 } from '../state/metadataCatalog'
 
+import {
+  ensureWikiPageFresh,
+} from './wikiPageFreshness'
+
 
 const wikiBaseUrl =
   'https://loveanddeepspace.wiki.gg'
@@ -3015,33 +3019,6 @@ function findExistingArchiveRecord(
 }
 
 
-function supplementalRecordMatchesExisting(
-  existing: CatalogItem,
-  record: SupplementalCatalogRecord
-) {
-  const text = (value: string | null | undefined) => value?.trim() || null
-  const releaseDate = record.releaseDate ?? existing.releaseDate
-  const imageUrl = record.imageUrl ?? existing.imageUrl
-  const memoryText = record.memoryText ?? existing.memoryText
-  const memoryTextSourceUrl = record.memoryText
-    ? record.sourceUrl
-    : existing.memoryTextSourceUrl
-
-  return (
-    text(existing.canonicalName) === text(record.canonicalName) &&
-    text(existing.character) === text(record.character) &&
-    text(existing.category) === text(record.category) &&
-    text(existing.releaseDate) === text(releaseDate) &&
-    text(existing.imageUrl) === text(imageUrl) &&
-    text(existing.sourceName) === text(record.sourceName) &&
-    text(existing.sourceUrl) === text(record.sourceUrl) &&
-    text(existing.sourceKey) === text(record.sourceKey) &&
-    text(existing.memoryText) === text(memoryText) &&
-    text(existing.memoryTextSourceUrl) === text(memoryTextSourceUrl)
-  )
-}
-
-
 function upsertArchiveRecord(
   record:
     SupplementalCatalogRecord,
@@ -3057,19 +3034,6 @@ function upsertArchiveRecord(
   if (
     existing
   ) {
-
-    if (
-      supplementalRecordMatchesExisting(
-        existing,
-        record
-      )
-    ) {
-      return {
-        created: false,
-        updated: false,
-        item: existing,
-      }
-    }
 
     /*
      * Adopt/refresh an existing archive-facing row
@@ -3359,6 +3323,21 @@ export async function syncSupplementalCatalog(
    * All Memories should already have run first
    * as the Memory-card backup/artwork source.
    */
+  const fallingPageReady =
+    await ensureWikiPageFresh(
+      'falling-for-you'
+    )
+
+
+  if (!fallingPageReady) {
+
+    throw new Error(
+      'Falling for You could not be refreshed from wiki.gg. The supplemental sync was stopped to avoid importing stale data.'
+    )
+
+  }
+
+
   const fallingEntries =
     await fetchFallingForYouRecords(
       character,
@@ -3558,6 +3537,21 @@ export async function syncSupplementalCatalog(
    * The archive row is created and related to the
    * Memory instead.
    */
+  const byYourSidePageReady =
+    await ensureWikiPageFresh(
+      'by-your-side'
+    )
+
+
+  if (!byYourSidePageReady) {
+
+    throw new Error(
+      'By Your Side could not be refreshed from wiki.gg. The supplemental sync was stopped to avoid importing stale data.'
+    )
+
+  }
+
+
   const byYourSideEntries =
     await fetchByYourSideRecords(
       character,

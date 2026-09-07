@@ -65,14 +65,6 @@ type PhoneSourceName =
   'wiki.gg'
 
 
-const companionNames = [
-  'Xavier',
-  'Zayne',
-  'Rafayel',
-  'Sylus',
-  'Caleb',
-] as const
-
 
 export type WikiPhoneRecord = {
   canonicalName: string
@@ -470,41 +462,8 @@ function extractReleaseDate(
 function canonicalCharacter(
   value: string
 ) {
-
-  const normalized =
-    normalizeText(
-      value
-    )
-
-
-  for (
-    const character
-    of companionNames
-  ) {
-
-    const characterPattern =
-      new RegExp(
-        `(?:^|\\s)${normalizeText(
-          character
-        )}(?:$|\\s)`
-      )
-
-
-    if (
-      characterPattern.test(
-        normalized
-      )
-    ) {
-
-      return character
-
-    }
-
-  }
-
-
-  return null
-
+  const cleaned = cleanText(value)
+  return cleaned || null
 }
 
 
@@ -1283,6 +1242,25 @@ function fullInputFromExistingPhone(
 
 }
 
+function phoneInputMatchesExisting(
+  existing: CatalogItem,
+  input: CatalogItemInput
+) {
+  const text = (value: string | null | undefined) => value?.trim() || null
+
+  return (
+    text(existing.canonicalName) === text(input.canonicalName) &&
+    text(existing.character) === text(input.character) &&
+    text(existing.category) === text(input.category) &&
+    text(existing.releaseDate) === text(input.releaseDate) &&
+    text(existing.source) === text(input.source) &&
+    text(existing.sourceName) === text(input.sourceName) &&
+    text(existing.sourceUrl) === text(input.sourceUrl) &&
+    text(existing.sourceKey) === text(input.sourceKey)
+  )
+}
+
+
 
 export async function fetchWikiPhoneCalls(
   character: string
@@ -1407,30 +1385,34 @@ export async function syncWikiPhoneCalls(
         existing
       ) {
 
+        const input = fullInputFromExistingPhone(
+          existing,
+          record
+        )
+
+        if (
+          phoneInputMatchesExisting(
+            existing,
+            input
+          )
+        ) {
+          skipped += 1
+          continue
+        }
+
         const refreshed =
           updateCatalogItem(
             existing.id,
-            fullInputFromExistingPhone(
-              existing,
-              record
-            )
+            input
           )
-
 
         if (
           refreshed
         ) {
-
-          updated +=
-            1
-
+          updated += 1
         } else {
-
-          skipped +=
-            1
-
+          skipped += 1
         }
-
 
         continue
 

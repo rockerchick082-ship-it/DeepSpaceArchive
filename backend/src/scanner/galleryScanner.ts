@@ -13,14 +13,6 @@ const imageExtensions =
   ])
 
 
-const characters = [
-  'Xavier',
-  'Zayne',
-  'Rafayel',
-  'Sylus',
-  'Caleb',
-]
-
 
 export type GalleryItem = {
   id: string
@@ -94,41 +86,15 @@ function cleanTitle(
 function detectCharacter(
   relativePath: string
 ) {
+  const segments = normalizeRelativePath(relativePath)
+    .split('/')
+    .filter(Boolean)
 
-  const normalizedSegments =
-    normalizeRelativePath(
-      relativePath
-    )
-      .split(
-        '/'
-      )
-      .map(
-        (segment) =>
-          segment.toLowerCase()
-      )
-
-
-  for (
-    const character
-    of characters
-  ) {
-
-    if (
-      normalizedSegments.includes(
-        character.toLowerCase()
-      )
-    ) {
-
-      return character
-
-    }
-
-  }
-
-
-  return null
-
+  /* Gallery is organized as Gallery/<Character>/..., so the first
+   * folder becomes the character without maintaining another hard-coded list. */
+  return segments.length >= 2 ? segments[0].replace(/^\d+\.\s*/, '').trim() || null : null
 }
+
 
 
 async function pathExists(

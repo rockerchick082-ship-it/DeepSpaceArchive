@@ -3015,6 +3015,33 @@ function findExistingArchiveRecord(
 }
 
 
+function supplementalRecordMatchesExisting(
+  existing: CatalogItem,
+  record: SupplementalCatalogRecord
+) {
+  const text = (value: string | null | undefined) => value?.trim() || null
+  const releaseDate = record.releaseDate ?? existing.releaseDate
+  const imageUrl = record.imageUrl ?? existing.imageUrl
+  const memoryText = record.memoryText ?? existing.memoryText
+  const memoryTextSourceUrl = record.memoryText
+    ? record.sourceUrl
+    : existing.memoryTextSourceUrl
+
+  return (
+    text(existing.canonicalName) === text(record.canonicalName) &&
+    text(existing.character) === text(record.character) &&
+    text(existing.category) === text(record.category) &&
+    text(existing.releaseDate) === text(releaseDate) &&
+    text(existing.imageUrl) === text(imageUrl) &&
+    text(existing.sourceName) === text(record.sourceName) &&
+    text(existing.sourceUrl) === text(record.sourceUrl) &&
+    text(existing.sourceKey) === text(record.sourceKey) &&
+    text(existing.memoryText) === text(memoryText) &&
+    text(existing.memoryTextSourceUrl) === text(memoryTextSourceUrl)
+  )
+}
+
+
 function upsertArchiveRecord(
   record:
     SupplementalCatalogRecord,
@@ -3030,6 +3057,19 @@ function upsertArchiveRecord(
   if (
     existing
   ) {
+
+    if (
+      supplementalRecordMatchesExisting(
+        existing,
+        record
+      )
+    ) {
+      return {
+        created: false,
+        updated: false,
+        item: existing,
+      }
+    }
 
     /*
      * Adopt/refresh an existing archive-facing row

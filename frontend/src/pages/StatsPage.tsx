@@ -23,15 +23,11 @@ import type {
   PersonalArchiveEntry,
 } from '../data/personalArchive'
 
+import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
 
-type StatsCharacter =
-  | 'All'
-  | 'Xavier'
-  | 'Zayne'
-  | 'Rafayel'
-  | 'Sylus'
-  | 'Caleb'
-  | 'Other'
+
+type StatsCharacter = string
+
 
 
 type CategoryStat = {
@@ -55,17 +51,6 @@ type CharacterStat = {
 }
 
 
-const characterFilters:
-  StatsCharacter[] = [
-    'All',
-    'Xavier',
-    'Zayne',
-    'Rafayel',
-    'Sylus',
-    'Caleb',
-    'Other',
-  ]
-
 
 const ratingValues = [
   5,
@@ -85,32 +70,9 @@ function characterBucket(
   entry:
     PersonalArchiveEntry
 ): StatsCharacter {
-
-  const character =
-    entry.item?.character
-
-
-  if (
-    character ===
-      'Xavier' ||
-    character ===
-      'Zayne' ||
-    character ===
-      'Rafayel' ||
-    character ===
-      'Sylus' ||
-    character ===
-      'Caleb'
-  ) {
-
-    return character
-
-  }
-
-
-  return 'Other'
-
+  return entry.item?.character?.trim() || 'Other'
 }
+
 
 
 function titleForEntry(
@@ -303,6 +265,20 @@ function watchSeconds(
 
 
 function StatsPage() {
+
+  const { characters: discoveredCharacters } = useArchiveCharacters()
+
+  const characterFilters =
+    useMemo(
+      () => [
+        'All',
+        ...discoveredCharacters,
+        'Other',
+      ],
+      [
+        discoveredCharacters,
+      ]
+    )
 
   const [
     entries,
@@ -860,6 +836,7 @@ function StatsPage() {
       [
         entries,
         selectedCategory,
+        characterFilters,
       ]
     )
 

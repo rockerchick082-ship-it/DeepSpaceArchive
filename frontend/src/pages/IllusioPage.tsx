@@ -16,6 +16,8 @@ import type {
   Memory,
 } from '../data/memoria'
 
+import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
+
 
 type LibraryResponse = {
   count: number
@@ -23,20 +25,19 @@ type LibraryResponse = {
 }
 
 
-const characters = [
-  'All',
-  'Xavier',
-  'Zayne',
-  'Rafayel',
-  'Sylus',
-  'Caleb',
-]
-
-
 function IllusioPage() {
 
   const navigate =
     useNavigate()
+
+  const {
+    characters: discoveredCharacters,
+  } = useArchiveCharacters()
+
+  const characters = [
+    'All',
+    ...discoveredCharacters,
+  ]
 
 
   const [

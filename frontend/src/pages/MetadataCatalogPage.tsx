@@ -72,21 +72,16 @@ import CatalogMatchFileModal
 import CatalogPagination
   from '../features/catalog/components/CatalogPagination'
 
+import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
+
 
 const CATALOG_PAGE_SIZE =
   100
 
 
-const WIKI_SYNC_CHARACTERS = [
-  'Xavier',
-  'Zayne',
-  'Rafayel',
-  'Sylus',
-  'Caleb',
-]
-
-
 function MetadataCatalogPage() {
+
+  const { characters: wikiSyncCharacters } = useArchiveCharacters()
 
   const [
     items,
@@ -2086,7 +2081,7 @@ function MetadataCatalogPage() {
       const characters =
         wikiCharacter ===
           'All'
-          ? WIKI_SYNC_CHARACTERS
+          ? wikiSyncCharacters
           : [
               wikiCharacter,
             ]
@@ -2209,7 +2204,7 @@ function MetadataCatalogPage() {
       const characters =
         wikiCharacter ===
           'All'
-          ? WIKI_SYNC_CHARACTERS
+          ? wikiSyncCharacters
           : [
               wikiCharacter,
             ]
@@ -2685,7 +2680,7 @@ function MetadataCatalogPage() {
       const characters =
         wikiCharacter ===
           'All'
-          ? WIKI_SYNC_CHARACTERS
+          ? wikiSyncCharacters
           : [
               wikiCharacter,
             ]
@@ -4597,6 +4592,9 @@ function MetadataCatalogPage() {
         <CatalogWikiSyncPanel
           wikiCharacter={
             wikiCharacter
+          }
+          wikiCharacters={
+            wikiSyncCharacters
           }
           wikiLoading={
             wikiLoading

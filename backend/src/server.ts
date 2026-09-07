@@ -61,6 +61,11 @@ import {
   initializePathSettings,
 } from './services/pathSettings'
 
+import {
+  discoverArchiveCharacters,
+  isArchiveCharacter,
+} from './services/characterRegistry'
+
 
 dotenv.config()
 
@@ -87,16 +92,6 @@ const upload =
 
 const PORT =
   3001
-
-
-const homeCharacters =
-  new Set([
-    'Xavier',
-    'Zayne',
-    'Rafayel',
-    'Sylus',
-    'Caleb',
-  ])
 
 
 const homeVideoExtensions =
@@ -445,6 +440,31 @@ app.get(
 
 /*
  * ========================================
+ * CHARACTER REGISTRY
+ * ========================================
+ */
+app.get(
+  '/api/library/characters',
+  async (_request, response) => {
+    try {
+      const characters = await discoverArchiveCharacters(
+        process.env.MEDIA_LIBRARY_PATH ?? null
+      )
+
+      response.json({
+        count: characters.length,
+        characters,
+      })
+    } catch (error) {
+      console.error('Unable to discover archive characters:', error)
+      response.status(500).json({ error: 'Unable to discover archive characters' })
+    }
+  }
+)
+
+
+/*
+ * ========================================
  * HOME MEDIA
  * ========================================
  *
@@ -495,22 +515,13 @@ app.get(
 
 
       if (
-        typeof character !==
-          'string' ||
-        !homeCharacters.has(
-          character
-        )
+        typeof character !== 'string' ||
+        !(await isArchiveCharacter(libraryPath, character))
       ) {
-
-        response
-          .status(400)
-          .json({
-            error:
-              'A valid Home character is required',
-          })
-
+        response.status(400).json({
+          error: 'A valid Home character is required',
+        })
         return
-
       }
 
 

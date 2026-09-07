@@ -14,6 +14,8 @@ import type {
   ArchiveItem,
 } from '../data/archive'
 
+import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
+
 
 type PhoneArchivePageProps = {
   title: string
@@ -63,16 +65,6 @@ type PhoneSort =
   | 'release-oldest'
   | 'title-asc'
   | 'title-desc'
-
-
-const characters = [
-  'All',
-  'Xavier',
-  'Zayne',
-  'Rafayel',
-  'Sylus',
-  'Caleb',
-]
 
 
 function archiveStateKey(
@@ -289,6 +281,13 @@ function PhoneArchivePage({
   endpoint,
   category,
 }: PhoneArchivePageProps) {
+
+  const { characters: discoveredCharacters } = useArchiveCharacters()
+
+  const characters = [
+    'All',
+    ...discoveredCharacters,
+  ]
 
   const navigate =
     useNavigate()

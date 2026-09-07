@@ -10,6 +10,8 @@ import {
   useNavigate,
 } from 'react-router-dom'
 
+import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
+
 import ArchiveStateCard
   from './ArchiveStateCard'
 
@@ -54,14 +56,6 @@ type PersonalArchivePageProps = {
 }
 
 
-const knownCharacters = [
-  'Xavier',
-  'Zayne',
-  'Rafayel',
-  'Sylus',
-  'Caleb',
-]
-
 
 function getEntryTitle(
   entry:
@@ -95,20 +89,9 @@ function characterBucket(
   entry:
     PersonalArchiveEntry
 ) {
-
-  const character =
-    getEntryCharacter(
-      entry
-    )
-
-
-  return knownCharacters.includes(
-    character
-  )
-    ? character
-    : 'Other'
-
+  return getEntryCharacter(entry) || 'Other'
 }
+
 
 
 function progressPercent(
@@ -253,6 +236,8 @@ function PersonalArchivePage({
   title,
   eyebrow,
 }: PersonalArchivePageProps) {
+
+  const { characters: discoveredCharacters } = useArchiveCharacters()
 
   const navigate =
     useNavigate()
@@ -1581,7 +1566,7 @@ function PersonalArchivePage({
 
             {[
               'All',
-              ...knownCharacters,
+              ...discoveredCharacters,
               'Other',
             ].map(
               (character) => (

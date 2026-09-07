@@ -875,6 +875,31 @@ export function createCatalogItem(
 }
 
 
+function importedSourceValueMatches(
+  existing: CatalogItemRow,
+  input: CatalogItemInput
+) {
+  const sameText = (left: string | null, right: string | null | undefined) =>
+    nullableText(left) === nullableText(right)
+
+  return (
+    sameText(existing.canonical_name, input.canonicalName) &&
+    sameText(existing.character, input.character) &&
+    sameText(existing.category, input.category) &&
+    sameText(existing.subcategory, input.subcategory) &&
+    sameText(existing.release_date, input.releaseDate) &&
+    existing.rarity === (input.rarity ?? null) &&
+    sameText(existing.position, input.position) &&
+    sameText(existing.attribute, input.attribute) &&
+    sameText(existing.source, input.source) &&
+    sameText(existing.image_url, input.imageUrl) &&
+    sameText(existing.source_url, input.sourceUrl) &&
+    sameText(existing.memory_text, input.memoryText) &&
+    sameText(existing.memory_text_source_url, input.memoryTextSourceUrl)
+  )
+}
+
+
 export function upsertCatalogItemFromSource(
   input:
     CatalogItemInput
@@ -938,6 +963,26 @@ export function upsertCatalogItemFromSource(
         ),
     }
 
+  }
+
+
+  /*
+   * Fast repeat sync path: source_updated_at is the time we fetched the
+   * page, not evidence that the wiki record changed. If all source-owned
+   * metadata already matches, avoid an UPDATE and preserve the existing
+   * row timestamp. This keeps repeat catalog syncs lightweight.
+   */
+  if (
+    importedSourceValueMatches(
+      existingRow,
+      input
+    )
+  ) {
+    return {
+      created: false,
+      updated: false,
+      item: getCatalogItem(existingRow.id),
+    }
   }
 
 

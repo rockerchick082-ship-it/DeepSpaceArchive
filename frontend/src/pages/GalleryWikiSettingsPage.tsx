@@ -11,12 +11,8 @@ import {
 } from 'react-router-dom'
 
 
-type GalleryCharacter =
-  | 'Xavier'
-  | 'Zayne'
-  | 'Rafayel'
-  | 'Sylus'
-  | 'Caleb'
+type GalleryCharacter = string
+
 
 
 type Source = {
@@ -265,6 +261,19 @@ function GalleryWikiSettingsPage() {
     useState(
       ''
     )
+
+
+  const [
+    newCharacter,
+    setNewCharacter,
+  ] =
+    useState('')
+
+  const [
+    newSourceUrl,
+    setNewSourceUrl,
+  ] =
+    useState('')
 
 
   const [
@@ -532,6 +541,31 @@ function GalleryWikiSettingsPage() {
           entry.lastSuccessAt
         )
     ).length
+
+
+  function addSource() {
+    const character = newCharacter.trim()
+    const url = newSourceUrl.trim()
+
+    if (!character || !url) {
+      setError('Enter both a character name and a wiki source URL.')
+      return
+    }
+
+    if (sources.some((source) => source.character.toLowerCase() === character.toLowerCase())) {
+      setError(`${character} already has a Gallery wiki source.`)
+      return
+    }
+
+    setSources((current) => [
+      ...current,
+      { character, url },
+    ])
+    setNewCharacter('')
+    setNewSourceUrl('')
+    setError('')
+    setMessage(`${character} was added. Use Save Source to store it permanently.`)
+  }
 
 
   function updateUrl(
@@ -1276,6 +1310,14 @@ function GalleryWikiSettingsPage() {
               without changing application code.
             </p>
 
+            <div className="gallery-wiki-core-links">
+              <strong>Archive metadata source links</strong>
+              <a href="https://loveanddeepspace.wiki.gg/wiki/All_Memories" target="_blank" rel="noreferrer">All Memories</a>
+              <a href="https://loveanddeepspace.wiki.gg/wiki/Falling_for_You" target="_blank" rel="noreferrer">Falling for You</a>
+              <a href="https://loveanddeepspace.wiki.gg/wiki/By_Your_Side" target="_blank" rel="noreferrer">By Your Side</a>
+              <a href="https://loveanddeepspace.wiki.gg/wiki/Phone/All" target="_blank" rel="noreferrer">Phone / All</a>
+            </div>
+
           </div>
 
 
@@ -1397,6 +1439,34 @@ function GalleryWikiSettingsPage() {
           </div>
 
         )}
+
+
+        <div className="gallery-source-add">
+          <div>
+            <span className="archive-eyebrow">FUTURE CHARACTERS</span>
+            <strong>Add a character and the wiki category URL</strong>
+            <p>When the game adds a new love interest, create the character folder in your library, add the wiki URL here, and the archive can use the new character without editing the code.</p>
+          </div>
+          <input
+            type="text"
+            placeholder="Character name"
+            value={newCharacter}
+            onChange={(event) => setNewCharacter(event.target.value)}
+          />
+          <input
+            type="url"
+            placeholder="https://loveanddeepspace.wiki.gg/wiki/Category:..."
+            value={newSourceUrl}
+            onChange={(event) => setNewSourceUrl(event.target.value)}
+          />
+          <button
+            type="button"
+            className="catalog-primary-button"
+            onClick={addSource}
+          >
+            Add Source
+          </button>
+        </div>
 
 
         <div className="gallery-source-list gallery-source-list-consistency">

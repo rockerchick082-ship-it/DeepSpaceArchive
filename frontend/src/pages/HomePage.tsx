@@ -12,6 +12,7 @@ import '../App.css'
 
 import HomeNavigation from '../components/HomeNavigation'
 import CharacterSelector from '../components/CharacterSelector'
+import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
 
 
 type HomeMediaItem = {
@@ -29,15 +30,6 @@ type HomeMediaResponse = {
   count: number
   items: HomeMediaItem[]
 }
-
-
-const characters = [
-  'Xavier',
-  'Zayne',
-  'Rafayel',
-  'Sylus',
-  'Caleb',
-]
 
 
 const characterStorageKey =
@@ -79,9 +71,7 @@ function getInitialCharacter() {
 
     if (
       savedCharacter &&
-      characters.includes(
-        savedCharacter
-      )
+      savedCharacter.trim()
     ) {
 
       return savedCharacter
@@ -294,6 +284,10 @@ function queueHomeMediaDownload(
 
 
 function HomePage() {
+
+  const {
+    characters,
+  } = useArchiveCharacters()
 
   const [
     selectedCharacter,
@@ -846,6 +840,7 @@ function HomePage() {
     [
       isMobileApp,
       nasConnected,
+      characters,
     ]
   )
 

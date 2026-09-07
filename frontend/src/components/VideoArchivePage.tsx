@@ -16,16 +16,7 @@ import type {
 
 import MemoryEditor from './MemoryEditor'
 import ArchiveSequenceNav from './ArchiveSequenceNav'
-
-
-const characters = [
-  'All',
-  'Xavier',
-  'Zayne',
-  'Rafayel',
-  'Sylus',
-  'Caleb',
-]
+import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
 
 
 const characterStorageKey =
@@ -44,9 +35,7 @@ function getInitialArchiveCharacter() {
 
     if (
       savedCharacter &&
-      characters.includes(
-        savedCharacter
-      )
+      savedCharacter.trim()
     ) {
 
       return savedCharacter
@@ -399,6 +388,15 @@ function VideoArchivePage({
 
   const navigate =
     useNavigate()
+
+  const {
+    characters: discoveredCharacters,
+  } = useArchiveCharacters()
+
+  const characters = [
+    'All',
+    ...discoveredCharacters,
+  ]
 
   const [
     items,

@@ -10,12 +10,8 @@ import type {
 } from './galleryWikiSync'
 
 
-export type GalleryWikiCharacter =
-  | 'Xavier'
-  | 'Zayne'
-  | 'Rafayel'
-  | 'Sylus'
-  | 'Caleb'
+export type GalleryWikiCharacter = string
+
 
 
 export type GalleryWikiSource = {
@@ -143,154 +139,71 @@ function normalizeSources(
   value:
     unknown
 ) {
+  const supplied = Array.isArray(value) ? value : []
+  const byCharacter = new Map<string, string>()
 
-  const supplied =
-    Array.isArray(
-      value
-    )
-      ? value
-      : []
+  for (const candidate of supplied) {
+    if (!candidate || typeof candidate !== 'object') continue
+    const source = candidate as Partial<GalleryWikiSource>
+    const character = typeof source.character === 'string' ? source.character.trim() : ''
+    const url = typeof source.url === 'string' ? source.url.trim() : ''
+    if (character && url) byCharacter.set(character, url)
+  }
 
-
-  return characters.map(
-    (character) => {
-
-      const matching =
-        supplied.find(
-          (candidate) => {
-
-            if (
-              !candidate ||
-              typeof candidate !==
-                'object'
-            ) {
-
-              return false
-
-            }
-
-
-            return (
-              (
-                candidate as
-                  Partial<GalleryWikiSource>
-              ).character ===
-              character
-            )
-
-          }
-        ) as
-          Partial<GalleryWikiSource> |
-          undefined
-
-
-      const fallback =
-        defaultSources.find(
-          (source) =>
-            source.character ===
-            character
-        ) as GalleryWikiSource
-
-
-      return {
-        character,
-
-        url:
-          typeof matching?.url ===
-            'string' &&
-          matching.url.trim()
-            ? matching.url.trim()
-            : fallback.url,
-      }
-
+  for (const fallback of defaultSources) {
+    if (!byCharacter.has(fallback.character)) {
+      byCharacter.set(fallback.character, fallback.url)
     }
-  )
+  }
 
+  const ordered = [
+    ...characters.filter((character) => byCharacter.has(character)),
+    ...[...byCharacter.keys()]
+      .filter((character) => !characters.includes(character))
+      .sort((left, right) => left.localeCompare(right)),
+  ]
+
+  return ordered.map((character) => ({
+    character,
+    url: byCharacter.get(character)!,
+  }))
 }
+
 
 
 function normalizeHistory(
   value:
     unknown
 ) {
+  const supplied = Array.isArray(value) ? value : []
+  const byCharacter = new Map<string, GalleryWikiSyncHistoryEntry>()
 
-  const supplied =
-    Array.isArray(
-      value
-    )
-      ? value
-      : []
+  for (const candidate of supplied) {
+    if (!candidate || typeof candidate !== 'object') continue
+    const entry = candidate as Partial<GalleryWikiSyncHistoryEntry>
+    const character = typeof entry.character === 'string' ? entry.character.trim() : ''
+    if (!character) continue
+    byCharacter.set(character, {
+      character,
+      lastAttemptAt: typeof entry.lastAttemptAt === 'string' ? entry.lastAttemptAt : null,
+      lastSuccessAt: typeof entry.lastSuccessAt === 'string' ? entry.lastSuccessAt : null,
+      lastResult: entry.lastResult ?? null,
+      lastError: typeof entry.lastError === 'string' ? entry.lastError : null,
+    })
+  }
 
+  const orderedCharacters = [
+    ...characters,
+    ...[...byCharacter.keys()]
+      .filter((character) => !characters.includes(character))
+      .sort((left, right) => left.localeCompare(right)),
+  ]
 
-  return characters.map(
-    (character) => {
-
-      const matching =
-        supplied.find(
-          (candidate) => {
-
-            if (
-              !candidate ||
-              typeof candidate !==
-                'object'
-            ) {
-
-              return false
-
-            }
-
-
-            return (
-              (
-                candidate as
-                  Partial<GalleryWikiSyncHistoryEntry>
-              ).character ===
-              character
-            )
-
-          }
-        ) as
-          Partial<GalleryWikiSyncHistoryEntry> |
-          undefined
-
-
-      return {
-        character,
-
-        lastAttemptAt:
-          typeof matching
-            ?.lastAttemptAt ===
-            'string'
-            ? matching.lastAttemptAt
-            : null,
-
-        lastSuccessAt:
-          typeof matching
-            ?.lastSuccessAt ===
-            'string'
-            ? matching.lastSuccessAt
-            : null,
-
-        lastResult:
-          matching?.lastResult &&
-          typeof matching.lastResult ===
-            'object'
-            ? matching.lastResult as
-                GalleryWikiSyncResult
-            : null,
-
-        lastError:
-          typeof matching
-            ?.lastError ===
-            'string'
-            ? matching.lastError
-            : null,
-      }
-
-    }
+  return orderedCharacters.map((character) =>
+    byCharacter.get(character) ?? emptyHistoryEntry(character)
   )
-
 }
+
 
 
 async function writeSettings(
@@ -417,15 +330,10 @@ async function readSettings():
 export function isGalleryWikiCharacter(
   value:
     string
-):
-  value is GalleryWikiCharacter {
-
-  return characters.includes(
-    value as
-      GalleryWikiCharacter
-  )
-
+): value is GalleryWikiCharacter {
+  return value.trim().length > 0
 }
+
 
 
 export function getDefaultGalleryWikiSources() {
@@ -479,18 +387,25 @@ export async function updateGalleryWikiSource(
     await readSettings()
 
 
-  const nextSources =
-    settings.sources.map(
-      (source) =>
-        source.character ===
-          character
-          ? {
-              character,
-              url:
-                url.trim(),
-            }
-          : source
+  const existingIndex =
+    settings.sources.findIndex(
+      (source) => source.character === character
     )
+
+  const nextSources = [
+    ...settings.sources,
+  ]
+
+  const nextSource = {
+    character: character.trim(),
+    url: url.trim(),
+  }
+
+  if (existingIndex >= 0) {
+    nextSources[existingIndex] = nextSource
+  } else {
+    nextSources.push(nextSource)
+  }
 
 
   await writeSettings({
@@ -556,15 +471,18 @@ export async function recordGalleryWikiSyncAttempt(
           character
           ? {
               ...entry,
-
-              lastAttemptAt:
-                attemptedAt,
-
-              lastError:
-                null,
+              lastAttemptAt: attemptedAt,
+              lastError: null,
             }
           : entry
     )
+
+  if (!syncHistory.some((entry) => entry.character === character)) {
+    syncHistory.push({
+      ...emptyHistoryEntry(character),
+      lastAttemptAt: attemptedAt,
+    })
+  }
 
 
   await writeSettings({
@@ -600,22 +518,22 @@ export async function recordGalleryWikiSyncSuccess(
           character
           ? {
               ...entry,
-
-              lastAttemptAt:
-                entry.lastAttemptAt ??
-                completedAt,
-
-              lastSuccessAt:
-                completedAt,
-
-              lastResult:
-                result,
-
-              lastError:
-                null,
+              lastAttemptAt: entry.lastAttemptAt ?? completedAt,
+              lastSuccessAt: completedAt,
+              lastResult: result,
+              lastError: null,
             }
           : entry
     )
+
+  if (!syncHistory.some((entry) => entry.character === character)) {
+    syncHistory.push({
+      ...emptyHistoryEntry(character),
+      lastAttemptAt: completedAt,
+      lastSuccessAt: completedAt,
+      lastResult: result,
+    })
+  }
 
 
   await writeSettings({
@@ -651,16 +569,19 @@ export async function recordGalleryWikiSyncFailure(
           character
           ? {
               ...entry,
-
-              lastAttemptAt:
-                entry.lastAttemptAt ??
-                failedAt,
-
-              lastError:
-                errorMessage,
+              lastAttemptAt: entry.lastAttemptAt ?? failedAt,
+              lastError: errorMessage,
             }
           : entry
     )
+
+  if (!syncHistory.some((entry) => entry.character === character)) {
+    syncHistory.push({
+      ...emptyHistoryEntry(character),
+      lastAttemptAt: failedAt,
+      lastError: errorMessage,
+    })
+  }
 
 
   await writeSettings({

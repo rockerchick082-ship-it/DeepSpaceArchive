@@ -13,6 +13,8 @@ import {
 import ArchiveSequenceNav
   from '../components/ArchiveSequenceNav'
 
+import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
+
 
 type GalleryItem = {
   id: string
@@ -52,18 +54,7 @@ type GallerySyncResult = {
 }
 
 
-const characters = [
-  'All',
-  'Xavier',
-  'Zayne',
-  'Rafayel',
-  'Sylus',
-  'Caleb',
-  'Other',
-]
-
-
-const syncCharacters = [
+const defaultSyncCharacters = [
   'Xavier',
   'Zayne',
   'Rafayel',
@@ -126,7 +117,7 @@ function readSavedSyncResults() {
 
   for (
     const character
-    of syncCharacters
+    of defaultSyncCharacters
   ) {
 
     const stored =
@@ -180,6 +171,16 @@ function readSavedSyncResults() {
 
 
 function GalleryPage() {
+
+  const { characters: discoveredCharacters } = useArchiveCharacters()
+
+  const characters = [
+    'All',
+    ...discoveredCharacters,
+    'Other',
+  ]
+
+  const syncCharacters = discoveredCharacters
 
   const location =
     useLocation()

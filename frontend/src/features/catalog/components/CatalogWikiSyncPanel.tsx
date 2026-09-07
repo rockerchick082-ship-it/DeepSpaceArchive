@@ -10,6 +10,7 @@ import type {
 
 type Props = {
   wikiCharacter: string
+  wikiCharacters: string[]
   wikiLoading: boolean
   phoneLoading: boolean
   wikiPreview: WikiPreviewResponse | null
@@ -35,6 +36,7 @@ type Props = {
 
 function CatalogWikiSyncPanel({
   wikiCharacter,
+  wikiCharacters,
   wikiLoading,
   phoneLoading,
   wikiPreview,
@@ -116,25 +118,16 @@ function CatalogWikiSyncPanel({
           All Characters
         </option>
 
-        <option value="Xavier">
-          Xavier
-        </option>
-
-        <option value="Zayne">
-          Zayne
-        </option>
-
-        <option value="Rafayel">
-          Rafayel
-        </option>
-
-        <option value="Sylus">
-          Sylus
-        </option>
-
-        <option value="Caleb">
-          Caleb
-        </option>
+        {wikiCharacters.map(
+          (character) => (
+            <option
+              key={character}
+              value={character}
+            >
+              {character}
+            </option>
+          )
+        )}
       </select>
 
 

@@ -835,6 +835,12 @@ function VideoArchivePlayer({
     )
 
 
+  const handleVideoEndedRef =
+    useRef<() => Promise<void>>(
+      async () => {}
+    )
+
+
   const restartHandledRef =
     useRef(false)
 
@@ -2657,7 +2663,7 @@ useEffect(
       }
 
 
-      function syncNativeAudioProgress() {
+      async function syncNativeAudioProgress() {
 
         const snapshot =
           readNativePlaybackSnapshot()
@@ -2721,6 +2727,38 @@ useEffect(
         }
 
 
+        const nativeCompleted =
+          Boolean(
+            snapshot.completed
+          )
+
+
+        if (
+          nativeCompleted &&
+          video &&
+          Number.isFinite(
+            snapshot.durationMs
+          ) &&
+          snapshot.durationMs > 0
+        ) {
+
+          /*
+           * Native Android audio playback does not fire the HTML video
+           * element's `ended` event because the WebView video is paused
+           * while MediaPlayer owns the audio stream. Put the WebView
+           * element at the true end position before handing completion to
+           * the normal end-of-item handler. This keeps play counts and
+           * Auto-Play Next working exactly as they do for video playback.
+           */
+          video.currentTime =
+            snapshot.durationMs /
+            1000
+
+          lastTrackedTimeRef.current =
+            video.currentTime
+        }
+
+
         const consumed =
           parseNativePlaybackSnapshot(
             bridge?.consumeNativePlaybackProgress?.()
@@ -2730,6 +2768,32 @@ useEffect(
         applyConsumedNativeProgress(
           consumed
         )
+
+
+        if (
+          nativeCompleted
+        ) {
+
+          audioOnlyRef.current =
+            false
+
+          setAudioOnly(
+            false
+          )
+
+          backgroundPlaybackDesiredRef.current =
+            false
+
+          /*
+           * Continue through the same completion path used by ordinary
+           * video playback. This is what advances playlists and the
+           * character/category Auto-Play Next queue.
+           */
+          await handleVideoEndedRef.current()
+
+          return
+        }
+
 
         audioOnlyRef.current =
           false
@@ -2745,12 +2809,14 @@ useEffect(
       }
 
 
-      syncNativeAudioProgress()
+      void syncNativeAudioProgress()
 
 
       const timer =
         window.setInterval(
-          syncNativeAudioProgress,
+          () => {
+            void syncNativeAudioProgress()
+          },
           1000
         )
 
@@ -2775,8 +2841,10 @@ useEffect(
 
 
   /*
-   * Keep the latest save callback in the ref from an
-   * effect instead of mutating the ref during render.
+   * Keep the latest callbacks in refs from effects instead of
+   * mutating refs during render. The native Android audio-only
+   * completion effect uses these refs so its dependency list does
+   * not have to depend on a function recreated on every render.
    */
   useEffect(
     () => {
@@ -2787,6 +2855,9 @@ useEffect(
           void savePlaybackProgress()
 
         }
+
+      handleVideoEndedRef.current =
+        handleVideoEnded
 
     }
   )

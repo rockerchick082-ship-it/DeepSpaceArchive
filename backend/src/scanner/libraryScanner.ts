@@ -167,6 +167,53 @@ function getMediaType(
 }
 
 
+const ignoredLibraryDirectoryNames = new Set([
+  '@eaDir',
+  '@tmp',
+  '@sharesnap',
+  '@SynologyDrive',
+])
+
+
+export function isIgnoredLibraryDirectory(
+  folderName: string
+) {
+
+  return ignoredLibraryDirectoryNames.has(
+    folderName
+  )
+
+}
+
+
+export function characterSortKey(
+  folderName: string
+) {
+
+  const match =
+    folderName.match(
+      /^(\d+)\.\s*/
+    )
+
+  if (match) {
+
+    return {
+      numbered: true,
+      number: Number(match[1]),
+      name: folderName.replace(/^\d+\.\s*/, ''),
+    }
+
+  }
+
+  return {
+    numbered: false,
+    number: Number.MAX_SAFE_INTEGER,
+    name: folderName,
+  }
+
+}
+
+
 function cleanCharacterName(
   folderName: string
 ) {
@@ -458,6 +505,16 @@ async function scanFolderRecursive(
       entry.isDirectory()
     ) {
 
+      if (
+        isIgnoredLibraryDirectory(
+          entry.name
+        )
+      ) {
+
+        continue
+
+      }
+
       const nestedItems =
         await scanFolderRecursive(
           fullPath,
@@ -713,7 +770,10 @@ export async function scanCategory(
   ) {
 
     if (
-      !folder.isDirectory()
+      !folder.isDirectory() ||
+      isIgnoredLibraryDirectory(
+        folder.name
+      )
     ) {
 
       continue

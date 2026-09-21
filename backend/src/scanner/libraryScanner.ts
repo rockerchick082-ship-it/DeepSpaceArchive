@@ -10,6 +10,10 @@ import {
   listCatalogMemoryLinks,
 } from '../state/metadataCatalog'
 
+import {
+  isIgnoredArchiveDirectory,
+} from '../services/archiveDirectoryRules'
+
 
 export type LibraryCatalogItem = {
   id: number
@@ -167,23 +171,9 @@ function getMediaType(
 }
 
 
-const ignoredLibraryDirectoryNames = new Set([
-  '@eaDir',
-  '@tmp',
-  '@sharesnap',
-  '@SynologyDrive',
-])
+export const isIgnoredLibraryDirectory =
+  isIgnoredArchiveDirectory
 
-
-export function isIgnoredLibraryDirectory(
-  folderName: string
-) {
-
-  return ignoredLibraryDirectoryNames.has(
-    folderName
-  )
-
-}
 
 
 export function characterSortKey(

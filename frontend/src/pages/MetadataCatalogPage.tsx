@@ -2617,7 +2617,7 @@ function MetadataCatalogPage() {
         message:
           wikiCharacter ===
             'All'
-            ? 'Complete: all five characters synced.'
+            ? `Complete: all ${characters.length} characters synced.`
             : `Complete: ${wikiCharacter} synced.`,
       })
 

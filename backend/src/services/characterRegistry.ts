@@ -1,6 +1,10 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
+import {
+  isIgnoredArchiveDirectory,
+} from './archiveDirectoryRules'
+
 export const defaultCharacters = [
   'Xavier',
   'Zayne',
@@ -49,7 +53,13 @@ function parseCharacterFolder(value: string) {
 async function directoriesAt(directory: string) {
   try {
     const entries = await fs.readdir(directory, { withFileTypes: true })
-    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+    return entries
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          !isIgnoredArchiveDirectory(entry.name)
+      )
+      .map((entry) => entry.name)
   } catch {
     return [] as string[]
   }

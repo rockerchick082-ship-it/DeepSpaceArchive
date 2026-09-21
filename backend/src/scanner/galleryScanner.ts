@@ -1,6 +1,10 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
+import {
+  isIgnoredArchiveDirectory,
+} from '../services/archiveDirectoryRules'
+
 
 const imageExtensions =
   new Set([
@@ -151,6 +155,17 @@ async function walkGallery(
     if (
       entry.isDirectory()
     ) {
+
+      if (
+        isIgnoredArchiveDirectory(
+          entry.name
+        )
+      ) {
+
+        continue
+
+      }
+
 
       await walkGallery(
         fullPath,

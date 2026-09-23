@@ -13,8 +13,11 @@ import {
   createCatalogItem,
   deleteCatalogItem,
   deleteCatalogItems,
+  dismissAllCatalogSyncInboxItems,
+  dismissCatalogSyncInboxItem,
   getCatalogItem,
   getCatalogStats,
+  listCatalogSyncInbox,
   linkCatalogFile,
   linkCatalogMemory,
   listCatalogArchiveLinks,
@@ -2363,6 +2366,297 @@ router.delete(
       success:
         true,
     })
+
+  }
+)
+
+
+router.get(
+  '/inbox',
+  async (
+    _request,
+    response
+  ) => {
+
+    try {
+
+      const entries =
+        listCatalogSyncInbox()
+
+
+      const libraryPath =
+        process.env.MEDIA_LIBRARY_PATH ??
+        null
+
+
+      const items =
+        await Promise.all(
+          entries.map(
+            async (entry) => {
+
+              let fileStatus:
+                | 'present'
+                | 'missing'
+                | 'stale'
+                | 'unknown' =
+                  entry.fileMatches.length ===
+                    0
+                    ? 'missing'
+                    : 'unknown'
+
+
+              if (
+                libraryPath &&
+                entry.fileMatches.length >
+                  0
+              ) {
+
+                let present =
+                  false
+
+
+                for (
+                  const match
+                  of entry.fileMatches
+                ) {
+
+                  try {
+
+                    const resolved =
+                      resolvedLibraryFilePath(
+                        libraryPath,
+                        match.relativePath
+                      )
+
+
+                    if (
+                      await pathExists(
+                        resolved.candidate
+                      )
+                    ) {
+
+                      present =
+                        true
+
+                      break
+
+                    }
+
+                  } catch {
+                    // Invalid stored paths are treated as stale.
+                  }
+
+                }
+
+
+                fileStatus =
+                  present
+                    ? 'present'
+                    : 'stale'
+
+              }
+
+
+              return {
+                id:
+                  entry.id,
+
+                catalogItemId:
+                  entry.catalogItemId,
+
+                discoveredAt:
+                  entry.discoveredAt,
+
+                item:
+                  entry.item,
+
+                fileStatus,
+
+                matchedPaths:
+                  entry.fileMatches.map(
+                    (match) =>
+                      match.relativePath
+                  ),
+              }
+
+            }
+          )
+        )
+
+
+      const summary = {
+        total:
+          items.length,
+
+        present:
+          items.filter(
+            (item) =>
+              item.fileStatus ===
+                'present'
+          ).length,
+
+        missing:
+          items.filter(
+            (item) =>
+              item.fileStatus ===
+                'missing'
+          ).length,
+
+        stale:
+          items.filter(
+            (item) =>
+              item.fileStatus ===
+                'stale'
+          ).length,
+
+        unknown:
+          items.filter(
+            (item) =>
+              item.fileStatus ===
+                'unknown'
+          ).length,
+      }
+
+
+      response.json({
+        libraryConfigured:
+          Boolean(
+            libraryPath
+          ),
+
+        summary,
+
+        items,
+      })
+
+    } catch (error) {
+
+      console.error(
+        'Unable to load new-content inbox:',
+        error
+      )
+
+
+      response
+        .status(500)
+        .json({
+          error:
+            'Unable to load new-content inbox.',
+        })
+
+    }
+
+  }
+)
+
+
+router.post(
+  '/inbox/dismiss-all',
+  (_request, response) => {
+
+    try {
+
+      response.json({
+        dismissed:
+          dismissAllCatalogSyncInboxItems(),
+      })
+
+    } catch (error) {
+
+      console.error(
+        'Unable to dismiss new-content inbox:',
+        error
+      )
+
+
+      response
+        .status(500)
+        .json({
+          error:
+            'Unable to dismiss new-content inbox.',
+        })
+
+    }
+
+  }
+)
+
+
+router.post(
+  '/inbox/:catalogItemId/dismiss',
+  (request, response) => {
+
+    const catalogItemId =
+      Number(
+        request.params.catalogItemId
+      )
+
+
+    if (
+      !Number.isInteger(
+        catalogItemId
+      ) ||
+      catalogItemId <=
+        0
+    ) {
+
+      response
+        .status(400)
+        .json({
+          error:
+            'Invalid catalog item ID.',
+        })
+
+      return
+
+    }
+
+
+    try {
+
+      const dismissed =
+        dismissCatalogSyncInboxItem(
+          catalogItemId
+        )
+
+
+      if (
+        dismissed ===
+          0
+      ) {
+
+        response
+          .status(404)
+          .json({
+            error:
+              'New-content inbox item was not found.',
+          })
+
+        return
+
+      }
+
+
+      response.json({
+        dismissed,
+      })
+
+    } catch (error) {
+
+      console.error(
+        'Unable to dismiss new-content item:',
+        error
+      )
+
+
+      response
+        .status(500)
+        .json({
+          error:
+            'Unable to dismiss new-content item.',
+        })
+
+    }
 
   }
 )

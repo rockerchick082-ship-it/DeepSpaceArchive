@@ -1,3 +1,7 @@
+import {
+  Link,
+} from 'react-router-dom'
+
 import type {
   SupplementalSyncResult,
   WikiCacheFreshnessResult,
@@ -564,6 +568,19 @@ function CatalogWikiSyncPanel({
       )}
 
 
+      {(
+        wikiSyncResult.created +
+        (supplementalSyncResult?.totalCreated ?? 0)
+      ) > 0 && (
+        <Link
+          className="catalog-new-content-link"
+          to="/settings/new-content"
+        >
+          Review newly discovered content →
+        </Link>
+      )}
+
+
     </div>
 
   )}
@@ -611,6 +628,16 @@ function CatalogWikiSyncPanel({
             : 0}
         {' records'}
       </small>
+
+
+      {phonePipelineResult.created > 0 && (
+        <Link
+          className="catalog-new-content-link"
+          to="/settings/new-content"
+        >
+          Review newly discovered content →
+        </Link>
+      )}
 
     </div>
 

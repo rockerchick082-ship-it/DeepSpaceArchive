@@ -94,6 +94,16 @@ export type CatalogItemWithFiles =
   }
 
 
+export type CatalogSyncInboxEntry = {
+  id: number
+  catalogItemId: number
+  discoveredAt: string
+  dismissedAt: string | null
+  item: CatalogItem
+  fileMatches: CatalogFileMatch[]
+}
+
+
 export type CatalogItemInput = {
   canonicalName: string
   character?: string | null
@@ -181,6 +191,14 @@ type CatalogItemMemoryRow = {
   created_at: string
   updated_at: string
 }
+
+
+type CatalogSyncInboxRow =
+  CatalogItemRow & {
+    inbox_id: number
+    inbox_discovered_at: string
+    inbox_dismissed_at: string | null
+  }
 
 
 function normalizeRelativePath(
@@ -950,6 +968,21 @@ export function upsertCatalogItemFromSource(
     !existingRow
   ) {
 
+    const item =
+      createCatalogItem(
+        input
+      )
+
+
+    if (item) {
+
+      markCatalogSyncInboxItem(
+        item.id
+      )
+
+    }
+
+
     return {
       created:
         true,
@@ -957,10 +990,7 @@ export function upsertCatalogItemFromSource(
       updated:
         false,
 
-      item:
-        createCatalogItem(
-          input
-        ),
+      item,
     }
 
   }
@@ -1288,6 +1318,155 @@ export function deleteCatalogItems(
     throw error
 
   }
+
+}
+
+
+export function markCatalogSyncInboxItem(
+  catalogItemId: number,
+  discoveredAt =
+    new Date()
+      .toISOString()
+) {
+
+  const result =
+    database
+      .prepare(`
+        INSERT OR IGNORE INTO catalog_sync_inbox (
+          catalog_item_id,
+          discovered_at,
+          dismissed_at
+        )
+        VALUES (?, ?, NULL)
+      `)
+      .run(
+        catalogItemId,
+        discoveredAt
+      )
+
+
+  return (
+    result.changes >
+    0
+  )
+
+}
+
+
+export function listCatalogSyncInbox(
+  options?: {
+    includeDismissed?: boolean
+  }
+): CatalogSyncInboxEntry[] {
+
+  const includeDismissed =
+    options?.includeDismissed ===
+      true
+
+
+  const rows =
+    database
+      .prepare(`
+        SELECT
+          inbox.id AS inbox_id,
+          inbox.discovered_at AS inbox_discovered_at,
+          inbox.dismissed_at AS inbox_dismissed_at,
+          item.*
+        FROM catalog_sync_inbox AS inbox
+        INNER JOIN catalog_item AS item
+          ON item.id = inbox.catalog_item_id
+        WHERE
+          ? = 1
+          OR inbox.dismissed_at IS NULL
+        ORDER BY
+          inbox.discovered_at DESC,
+          inbox.id DESC
+      `)
+      .all(
+        includeDismissed
+          ? 1
+          : 0
+      ) as
+        CatalogSyncInboxRow[]
+
+
+  return rows.map(
+    (row) => ({
+      id:
+        row.inbox_id,
+
+      catalogItemId:
+        row.id,
+
+      discoveredAt:
+        row.inbox_discovered_at,
+
+      dismissedAt:
+        row.inbox_dismissed_at,
+
+      item:
+        rowToCatalogItem(
+          row
+        ),
+
+      fileMatches:
+        listCatalogFileMatches(
+          row.id
+        ),
+    })
+  )
+
+}
+
+
+export function dismissCatalogSyncInboxItem(
+  catalogItemId: number
+) {
+
+  const result =
+    database
+      .prepare(`
+        UPDATE catalog_sync_inbox
+        SET
+          dismissed_at = ?
+        WHERE
+          catalog_item_id = ?
+          AND dismissed_at IS NULL
+      `)
+      .run(
+        new Date()
+          .toISOString(),
+        catalogItemId
+      )
+
+
+  return Number(
+    result.changes
+  )
+
+}
+
+
+export function dismissAllCatalogSyncInboxItems() {
+
+  const result =
+    database
+      .prepare(`
+        UPDATE catalog_sync_inbox
+        SET
+          dismissed_at = ?
+        WHERE
+          dismissed_at IS NULL
+      `)
+      .run(
+        new Date()
+          .toISOString()
+      )
+
+
+  return Number(
+    result.changes
+  )
 
 }
 

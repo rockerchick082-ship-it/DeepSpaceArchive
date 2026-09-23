@@ -54,6 +54,7 @@ import LibraryStatusPage from './pages/LibraryStatusPage'
 import ArchiveCompletenessPage from './pages/ArchiveCompletenessPage'
 import ArchiveIntegrityPage from './pages/ArchiveIntegrityPage'
 import TagManagerPage from './pages/TagManagerPage'
+import NewContentInboxPage from './pages/NewContentInboxPage'
 import MetadataHealthPage from './pages/MetadataHealthPage'
 import ThumbnailCachePage from './pages/ThumbnailCachePage'
 import DatabaseMaintenancePage from './pages/DatabaseMaintenancePage'
@@ -2638,6 +2639,14 @@ function App() {
   path="/settings/tags"
   element={
     <TagManagerPage />
+  }
+/>
+
+
+<Route
+  path="/settings/new-content"
+  element={
+    <NewContentInboxPage />
   }
 />
 

@@ -17,7 +17,7 @@ export const applicationDatabaseSchemaVersion =
 
 
 export const catalogDatabaseSchemaVersion =
-  1
+  2
 
 
 export {
@@ -1140,6 +1140,43 @@ function catalogMigrationV1(
 }
 
 
+function catalogMigrationV2(
+  database: DatabaseSync
+) {
+
+  database.exec(`
+    PRAGMA foreign_keys = ON;
+    BEGIN IMMEDIATE;
+
+    CREATE TABLE IF NOT EXISTS catalog_sync_inbox (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      catalog_item_id INTEGER NOT NULL UNIQUE,
+      discovered_at TEXT NOT NULL,
+      dismissed_at TEXT,
+
+      FOREIGN KEY (
+        catalog_item_id
+      )
+      REFERENCES catalog_item (
+        id
+      )
+      ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS
+      catalog_sync_inbox_dismissed_index
+    ON catalog_sync_inbox (
+      dismissed_at,
+      discovered_at DESC
+    );
+
+    PRAGMA user_version = 2;
+    COMMIT;
+  `)
+
+}
+
+
 const applicationMigrations:
   MigrationDefinition[] = [
 
@@ -1224,6 +1261,17 @@ const catalogMigrations:
 
     run:
       catalogMigrationV1,
+  },
+
+  {
+    version:
+      2,
+
+    name:
+      'Add new-content sync inbox',
+
+    run:
+      catalogMigrationV2,
   },
 
 ]

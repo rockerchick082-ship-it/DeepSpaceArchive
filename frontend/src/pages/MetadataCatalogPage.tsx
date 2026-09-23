@@ -681,16 +681,33 @@ function MetadataCatalogPage() {
       }
 
 
-      setWikiCharacter(
-        (current) =>
-          current ===
-            'All' ||
-          wikiSyncCharacters.includes(
-            current
-          )
-            ? current
-            : wikiSyncCharacters[0]
-      )
+      const timeoutId =
+        window.setTimeout(
+          () => {
+
+            setWikiCharacter(
+              (current) =>
+                current ===
+                  'All' ||
+                wikiSyncCharacters.includes(
+                  current
+                )
+                  ? current
+                  : wikiSyncCharacters[0]
+            )
+
+          },
+          0
+        )
+
+
+      return () => {
+
+        window.clearTimeout(
+          timeoutId
+        )
+
+      }
 
     },
     [

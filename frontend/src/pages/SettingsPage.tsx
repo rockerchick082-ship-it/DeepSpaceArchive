@@ -136,6 +136,23 @@ const settingsGroups:
 
         {
           to:
+            '/settings/new-content',
+
+          icon:
+            '✦',
+
+          title:
+            'New Content Inbox',
+
+          description:
+            'Review brand-new records discovered by wiki and phone syncs, and see which recordings are still missing from the NAS.',
+
+          tag:
+            'NEW',
+        },
+
+        {
+          to:
             '/settings/catalog',
 
           icon:

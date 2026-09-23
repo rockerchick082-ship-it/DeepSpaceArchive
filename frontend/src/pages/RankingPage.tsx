@@ -14,6 +14,8 @@ import type {
   ArchiveItem,
 } from '../data/archive'
 
+import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
+
 
 type RankingCategory = {
   key: string
@@ -148,15 +150,6 @@ const rankingCategories:
     playerPath:
       '/tender-moments/watch',
   },
-]
-
-
-const characterOrder = [
-  'Xavier',
-  'Zayne',
-  'Rafayel',
-  'Sylus',
-  'Caleb',
 ]
 
 
@@ -551,6 +544,10 @@ function RankingPage() {
   const navigate =
     useNavigate()
 
+  const {
+    characters: archiveCharacters,
+  } = useArchiveCharacters()
+
   const [
     searchParams,
     setSearchParams,
@@ -770,12 +767,12 @@ function RankingPage() {
           ) => {
 
             const leftIndex =
-              characterOrder.indexOf(
+              archiveCharacters.indexOf(
                 left
               )
 
             const rightIndex =
-              characterOrder.indexOf(
+              archiveCharacters.indexOf(
                 right
               )
 
@@ -811,6 +808,7 @@ function RankingPage() {
       },
       [
         allItems,
+        archiveCharacters,
       ]
     )
 

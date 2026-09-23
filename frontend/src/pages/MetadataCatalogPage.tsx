@@ -81,7 +81,10 @@ const CATALOG_PAGE_SIZE =
 
 function MetadataCatalogPage() {
 
-  const { characters: wikiSyncCharacters } = useArchiveCharacters()
+  const {
+    characters: wikiSyncCharacters,
+    loading: wikiSyncCharactersLoading,
+  } = useArchiveCharacters()
 
   const [
     items,
@@ -660,8 +663,41 @@ function MetadataCatalogPage() {
     setWikiCharacter,
   ] =
     useState(
-      'Xavier'
+      ''
     )
+
+
+  useEffect(
+    () => {
+
+      if (
+        wikiSyncCharactersLoading ||
+        wikiSyncCharacters.length ===
+          0
+      ) {
+
+        return
+
+      }
+
+
+      setWikiCharacter(
+        (current) =>
+          current ===
+            'All' ||
+          wikiSyncCharacters.includes(
+            current
+          )
+            ? current
+            : wikiSyncCharacters[0]
+      )
+
+    },
+    [
+      wikiSyncCharacters,
+      wikiSyncCharactersLoading,
+    ]
+  )
 
 
   const [

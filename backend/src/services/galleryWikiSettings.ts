@@ -9,6 +9,10 @@ import type {
   GalleryWikiSyncResult,
 } from './galleryWikiSync'
 
+import {
+  discoverArchiveCharacters,
+} from './characterRegistry'
+
 
 export type GalleryWikiCharacter = string
 
@@ -110,6 +114,41 @@ const characters =
   )
 
 
+function generatedMemoryImageSource(
+  character: string
+) {
+
+  const wikiCharacter =
+    encodeURIComponent(
+      character
+        .trim()
+        .replace(
+          /\s+/g,
+          '_'
+        )
+    )
+
+
+  return `https://loveanddeepspace.wiki.gg/wiki/Category:${wikiCharacter}_Memory_images`
+
+}
+
+
+function sameCharacter(
+  left: string,
+  right: string
+) {
+
+  return left
+    .trim()
+    .toLocaleLowerCase() ===
+    right
+      .trim()
+      .toLocaleLowerCase()
+
+}
+
+
 function emptyHistoryEntry(
   character:
     GalleryWikiCharacter
@@ -206,6 +245,89 @@ function normalizeHistory(
 
 
 
+async function includeDiscoveredCharacters(
+  settings: Required<GalleryWikiSettings>
+): Promise<Required<GalleryWikiSettings>> {
+
+  const discovered =
+    await discoverArchiveCharacters(
+      process.env.MEDIA_LIBRARY_PATH ??
+        null
+    )
+
+
+  const sources =
+    settings.sources.map(
+      (source) => ({
+        ...source,
+      })
+    )
+
+
+  const syncHistory =
+    settings.syncHistory.map(
+      (entry) => ({
+        ...entry,
+      })
+    )
+
+
+  for (
+    const character
+    of discovered
+  ) {
+
+    if (
+      !sources.some(
+        (source) =>
+          sameCharacter(
+            source.character,
+            character.name
+          )
+      )
+    ) {
+
+      sources.push({
+        character:
+          character.name,
+        url:
+          generatedMemoryImageSource(
+            character.name
+          ),
+      })
+
+    }
+
+
+    if (
+      !syncHistory.some(
+        (entry) =>
+          sameCharacter(
+            entry.character,
+            character.name
+          )
+      )
+    ) {
+
+      syncHistory.push(
+        emptyHistoryEntry(
+          character.name
+        )
+      )
+
+    }
+
+  }
+
+
+  return {
+    sources,
+    syncHistory,
+  }
+
+}
+
+
 async function writeSettings(
   settings:
     GalleryWikiSettings
@@ -264,7 +386,7 @@ async function readSettings():
         GalleryWikiSettings
 
 
-    return {
+    return includeDiscoveredCharacters({
       sources:
         normalizeSources(
           parsed.sources
@@ -274,7 +396,7 @@ async function readSettings():
         normalizeHistory(
           parsed.syncHistory
         ),
-    }
+    })
 
   } catch (
     error
@@ -320,7 +442,9 @@ async function readSettings():
     )
 
 
-    return initial
+    return includeDiscoveredCharacters(
+      initial
+    )
 
   }
 
@@ -445,7 +569,9 @@ export async function restoreDefaultGalleryWikiSources() {
   })
 
 
-  return sources
+  return (
+    await readSettings()
+  ).sources
 
 }
 

@@ -90,16 +90,11 @@ function getInitialCharacter() {
 
   /*
    * The Home page has no "All" option.
-   * Xavier remains the safe default for
-   * a new install or after "All" was
-   * selected on an archive page.
+   * Wait for the archive character registry
+   * to choose the first available character
+   * instead of assuming a specific roster.
    */
-  rememberCharacter(
-    'Xavier'
-  )
-
-
-  return 'Xavier'
+  return ''
 
 }
 
@@ -287,6 +282,7 @@ function HomePage() {
 
   const {
     characters,
+    loading: charactersLoading,
   } = useArchiveCharacters()
 
   const [
@@ -396,6 +392,63 @@ function HomePage() {
     )
 
 
+  useEffect(
+    () => {
+
+      if (
+        charactersLoading ||
+        characters.length ===
+          0 ||
+        (
+          selectedCharacter &&
+          characters.includes(
+            selectedCharacter
+          )
+        )
+      ) {
+
+        return
+
+      }
+
+
+      const firstCharacter =
+        characters[0]
+
+
+      rememberCharacter(
+        firstCharacter
+      )
+
+
+      setSelectedCharacter(
+        firstCharacter
+      )
+
+
+      setMediaIndex(
+        0
+      )
+
+
+      setLoadingMedia(
+        true
+      )
+
+
+      setMediaError(
+        ''
+      )
+
+    },
+    [
+      characters,
+      charactersLoading,
+      selectedCharacter,
+    ]
+  )
+
+
   /*
    * =====================================
    * LOAD HOME MEDIA FROM THE LIBRARY
@@ -411,6 +464,15 @@ function HomePage() {
 
   useEffect(
     () => {
+
+      if (
+        !selectedCharacter
+      ) {
+
+        return
+
+      }
+
 
       let cancelled =
         false

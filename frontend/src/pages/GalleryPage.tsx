@@ -54,15 +54,6 @@ type GallerySyncResult = {
 }
 
 
-const defaultSyncCharacters = [
-  'Xavier',
-  'Zayne',
-  'Rafayel',
-  'Sylus',
-  'Caleb',
-]
-
-
 function imageUrl(
   item:
     GalleryItem
@@ -108,7 +99,9 @@ async function fetchGallery() {
 }
 
 
-function readSavedSyncResults() {
+function readSavedSyncResults(
+  characters: readonly string[]
+) {
 
   const results:
     GallerySyncResult[] =
@@ -117,7 +110,7 @@ function readSavedSyncResults() {
 
   for (
     const character
-    of defaultSyncCharacters
+    of characters
   ) {
 
     const stored =
@@ -304,7 +297,9 @@ function GalleryPage() {
   ] =
     useState<GallerySyncResult[]>(
       () =>
-        readSavedSyncResults()
+        readSavedSyncResults(
+          syncCharacters
+        )
     )
 
 
@@ -352,7 +347,9 @@ function GalleryPage() {
 
 
           setSavedSyncResults(
-            readSavedSyncResults()
+            readSavedSyncResults(
+              syncCharacters
+            )
           )
 
 
@@ -388,7 +385,9 @@ function GalleryPage() {
         }
 
       },
-      []
+      [
+        syncCharacters,
+      ]
     )
 
 

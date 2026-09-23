@@ -48,6 +48,7 @@ import BackupPage from './pages/BackupPage'
 import SettingsPage from './pages/SettingsPage'
 
 import LibraryStatusPage from './pages/LibraryStatusPage'
+import ArchiveCompletenessPage from './pages/ArchiveCompletenessPage'
 import MetadataHealthPage from './pages/MetadataHealthPage'
 import ThumbnailCachePage from './pages/ThumbnailCachePage'
 import DatabaseMaintenancePage from './pages/DatabaseMaintenancePage'
@@ -2600,6 +2601,13 @@ function App() {
   path="/settings/library"
   element={
     <LibraryStatusPage />
+  }
+/>
+
+<Route
+  path="/settings/completeness"
+  element={
+    <ArchiveCompletenessPage />
   }
 />
 

@@ -55,6 +55,23 @@ const settingsGroups:
 
         {
           to:
+            '/settings/completeness',
+
+          icon:
+            '✓',
+
+          title:
+            'Archive Completeness',
+
+          description:
+            'Compare wiki-synced archive records with NAS media to find missing recordings and unmatched local files.',
+
+          tag:
+            'COVERAGE',
+        },
+
+        {
+          to:
             '/settings/file-locations',
 
           icon:

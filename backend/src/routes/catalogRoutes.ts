@@ -73,6 +73,10 @@ import {
   clearWikiPageFreshnessCache,
 } from '../services/wikiPageFreshness'
 
+import {
+  buildArchiveCompleteness,
+} from '../services/archiveCompleteness'
+
 
 const router =
   Router()
@@ -775,6 +779,62 @@ router.post(
         error:
           'Unable to refresh wiki page freshness.',
       })
+
+    }
+
+  }
+)
+
+
+router.get(
+  '/completeness',
+  async (
+    _request,
+    response
+  ) => {
+
+    const libraryPath =
+      process.env.MEDIA_LIBRARY_PATH
+
+
+    if (
+      !libraryPath
+    ) {
+
+      response
+        .status(500)
+        .json({
+          error:
+            'MEDIA_LIBRARY_PATH is not configured',
+        })
+
+      return
+
+    }
+
+
+    try {
+
+      response.json(
+        await buildArchiveCompleteness(
+          libraryPath
+        )
+      )
+
+    } catch (error) {
+
+      console.error(
+        'Unable to build archive completeness report:',
+        error
+      )
+
+
+      response
+        .status(500)
+        .json({
+          error:
+            'Unable to build archive completeness report.',
+        })
 
     }
 

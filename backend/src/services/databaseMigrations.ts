@@ -13,7 +13,7 @@ import {
 
 
 export const applicationDatabaseSchemaVersion =
-  3
+  4
 
 
 export const catalogDatabaseSchemaVersion =
@@ -551,6 +551,74 @@ function applicationMigrationV3(
 }
 
 
+function applicationMigrationV4(
+  database: DatabaseSync
+) {
+
+  database.exec(`
+    PRAGMA foreign_keys = ON;
+    BEGIN IMMEDIATE;
+
+    CREATE TABLE IF NOT EXISTS media_tag (
+
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+      name TEXT NOT NULL,
+
+      normalized_name TEXT NOT NULL UNIQUE,
+
+      created_at TEXT NOT NULL
+
+    );
+
+
+    CREATE TABLE IF NOT EXISTS media_tag_assignment (
+
+      tag_id INTEGER NOT NULL,
+
+      category TEXT NOT NULL,
+
+      relative_path TEXT NOT NULL,
+
+      created_at TEXT NOT NULL,
+
+      PRIMARY KEY (
+        tag_id,
+        category,
+        relative_path
+      ),
+
+      FOREIGN KEY (
+        tag_id
+      )
+      REFERENCES media_tag(id)
+      ON DELETE CASCADE
+
+    );
+
+
+    CREATE INDEX IF NOT EXISTS
+      idx_media_tag_assignment_item
+    ON media_tag_assignment(
+      category,
+      relative_path
+    );
+
+
+    CREATE INDEX IF NOT EXISTS
+      idx_media_tag_assignment_tag
+    ON media_tag_assignment(
+      tag_id
+    );
+
+
+    PRAGMA user_version = 4;
+    COMMIT;
+  `)
+
+}
+
+
 function getTableSql(
   database: DatabaseSync,
   tableName: string
@@ -1017,6 +1085,17 @@ const applicationMigrations:
 
     run:
       applicationMigrationV3,
+  },
+
+  {
+    version:
+      4,
+
+    name:
+      'Add persistent media tags',
+
+    run:
+      applicationMigrationV4,
   },
 
 ]

@@ -9,6 +9,9 @@ import {
   useSearchParams,
 } from 'react-router-dom'
 
+import { useMediaTags } from '../data/mediaTags'
+import { MediaTagChips, MediaTagEditor } from '../components/MediaTagControls'
+
 
 type MainStoryPart = {
   id: string
@@ -145,6 +148,13 @@ function MainStoryChapterPage() {
     searchParams,
   ] =
     useSearchParams()
+
+
+  const {
+    tags: availableTags,
+    tagsFor,
+    saveTags,
+  } = useMediaTags()
 
 
   const branchId =
@@ -1573,6 +1583,16 @@ function MainStoryChapterPage() {
                       )}
 
 
+                      <MediaTagChips
+                        tags={
+                          tagsFor(
+                            'Main Story',
+                            relativePath
+                          )
+                        }
+                      />
+
+
                       <div
                         className="main-story-progress-track main-story-part-progress"
                         aria-label={`${progress}% watched`}
@@ -1626,6 +1646,30 @@ function MainStoryChapterPage() {
                   >
                     Edit
                   </button>
+
+
+                  <MediaTagEditor
+                    title={
+                      part.title
+                    }
+                    tags={
+                      tagsFor(
+                        'Main Story',
+                        relativePath
+                      )
+                    }
+                    availableTags={
+                      availableTags
+                    }
+                    onSave={(nextTags) =>
+                      saveTags(
+                        'Main Story',
+                        relativePath,
+                        nextTags
+                      )
+                    }
+                    buttonClassName="main-story-tag-button"
+                  />
 
                 </div>
 

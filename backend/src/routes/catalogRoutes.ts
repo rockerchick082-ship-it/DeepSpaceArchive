@@ -39,6 +39,10 @@ import {
 } from '../state/playlists'
 
 import {
+  renameMediaTagPath,
+} from '../state/mediaTags'
+
+import {
   autoMatchCatalog,
   getBulkCatalogMatchOptions,
   getCatalogMatchCandidates,
@@ -3068,6 +3072,10 @@ router.post(
           0
 
 
+        let mediaTagsUpdated =
+          0
+
+
         const warnings:
           string[] =
           []
@@ -3121,6 +3129,30 @@ router.post(
         }
 
 
+        try {
+
+          mediaTagsUpdated =
+            renameMediaTagPath(
+              fileMatch.category,
+              oldRelativePath,
+              newRelativePath
+            )
+
+        } catch (tagError) {
+
+          console.warn(
+            'File renamed, but media tag paths could not be migrated:',
+            tagError
+          )
+
+
+          warnings.push(
+            'Media tags could not be migrated automatically.'
+          )
+
+        }
+
+
         response.json({
           success:
             true,
@@ -3143,6 +3175,8 @@ router.post(
           archiveStateUpdated,
 
           playlistItemsUpdated,
+
+          mediaTagsUpdated,
 
           warnings,
         })

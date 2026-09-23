@@ -48,6 +48,7 @@ import * as libraryHealthRouteModule from './routes/libraryHealthRoutes'
 import * as thumbnailMaintenanceRouteModule from './routes/thumbnailMaintenanceRoutes'
 import * as databaseMaintenanceRouteModule from './routes/databaseMaintenanceRoutes'
 import * as rankingRouteModule from './routes/rankingRoutes'
+import * as mediaTagRouteModule from './routes/mediaTagRoutes'
 import * as systemInfoRouteModule from './routes/systemInfoRoutes'
 import * as catalogRouteModule from './routes/catalogRoutes'
 import * as galleryRouteModule from './routes/GalleryRoutes'
@@ -311,6 +312,13 @@ const rankingRoutes =
   )
 
 
+const mediaTagRoutes =
+  resolveRouter(
+    mediaTagRouteModule,
+    'mediaTagRoutes'
+  )
+
+
 /*
  * ========================================
  * GLOBAL MIDDLEWARE
@@ -345,6 +353,12 @@ app.use(
 app.use(
   '/api/rankings',
   rankingRoutes
+)
+
+
+app.use(
+  '/api/media-tags',
+  mediaTagRoutes
 )
 
 

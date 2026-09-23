@@ -34,6 +34,9 @@ import {
   personalArchiveSources,
 } from '../data/personalArchive'
 
+import { useMediaTags } from '../data/mediaTags'
+import { MediaTagChips, MediaTagEditor } from '../components/MediaTagControls'
+
 
 type PlaylistResponse = {
   items: Playlist[]
@@ -2039,6 +2042,13 @@ function PlaylistResolvedCard({
     entry.archiveItem
 
 
+  const {
+    tags: availableTags,
+    tagsFor,
+    saveTags,
+  } = useMediaTags()
+
+
   const phoneLogStyle =
     entry.playlistItem.category ===
       'Phone Call' ||
@@ -2442,9 +2452,43 @@ function PlaylistResolvedCard({
 
           </span>
 
+
+          <MediaTagChips
+            tags={
+              tagsFor(
+                entry.playlistItem.category,
+                item.relativePath
+              )
+            }
+          />
+
         </div>
 
       </button>
+
+
+      <MediaTagEditor
+        title={
+          item.title
+        }
+        tags={
+          tagsFor(
+            entry.playlistItem.category,
+            item.relativePath
+          )
+        }
+        availableTags={
+          availableTags
+        }
+        onSave={(nextTags) =>
+          saveTags(
+            entry.playlistItem.category,
+            item.relativePath,
+            nextTags
+          )
+        }
+        buttonClassName="playlist-item-tag-button"
+      />
 
 
       <button

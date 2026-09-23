@@ -31336,3 +31336,372 @@ html[data-dsa-mobile="true"] .player-audio-only-icon {
     text-align: left;
   }
 }
+
+/* ========================================
+   MEDIA TAGGING
+======================================== */
+
+.media-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.media-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 4px 9px;
+  border: 1px solid rgba(180, 191, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(113, 126, 206, 0.14);
+  color: rgba(239, 242, 255, 0.92);
+  font: inherit;
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.media-tag-chip-removable {
+  cursor: pointer;
+}
+
+.media-tag-chip-removable:hover {
+  border-color: rgba(202, 209, 255, 0.5);
+  background: rgba(128, 143, 232, 0.24);
+}
+
+.media-tag-edit-button,
+.phone-media-tag-button,
+.main-story-tag-button,
+.player-tag-button {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.075);
+  color: rgba(244, 246, 255, 0.9);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.media-tag-edit-button:hover,
+.phone-media-tag-button:hover,
+.main-story-tag-button:hover,
+.player-tag-button:hover {
+  border-color: rgba(190, 200, 255, 0.48);
+  background: rgba(126, 140, 224, 0.18);
+}
+
+.memory-card-actions .media-tag-edit-button {
+  min-height: 32px;
+  padding: 7px 10px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    background 140ms ease;
+}
+
+.memory-card-wrapper:hover .media-tag-edit-button,
+.memory-card-wrapper:focus-within .media-tag-edit-button {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.phone-media-tag-button {
+  position: absolute;
+  right: 44px;
+  top: 10px;
+  z-index: 3;
+  min-height: 30px;
+  padding: 6px 10px;
+}
+
+.illusio-media-card-wrapper {
+  position: relative;
+  min-width: 0;
+}
+
+.illusio-media-card-wrapper .illusio-media-card {
+  width: 100%;
+  height: 100%;
+}
+
+.illusio-media-card-wrapper > .media-tag-edit-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  min-height: 30px;
+  padding: 6px 10px;
+  background: rgba(8, 10, 20, 0.76);
+  backdrop-filter: blur(8px);
+}
+
+.illusio-toolbar-row {
+  margin-top: 18px;
+}
+
+.main-story-tag-button {
+  min-height: 32px;
+  margin-left: 8px;
+  padding: 7px 11px;
+}
+
+.player-media-tags {
+  margin-top: 7px;
+}
+
+.player-tag-button {
+  min-height: 42px;
+  padding: 10px 16px;
+}
+
+.media-tag-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 4, 10, 0.72);
+  backdrop-filter: blur(12px);
+}
+
+.media-tag-modal {
+  width: min(560px, 100%);
+  max-height: min(720px, calc(100vh - 40px));
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  background: #10121c;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
+  color: #f5f6fb;
+}
+
+.media-tag-modal-header,
+.media-tag-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+}
+
+.media-tag-modal-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.media-tag-modal-header h2 {
+  margin: 5px 0 0;
+  font-size: 1.25rem;
+}
+
+.media-tag-modal-close {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+  cursor: pointer;
+  font-size: 1.45rem;
+}
+
+.media-tag-editor-body {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.media-tag-editor-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.media-tag-empty-copy {
+  margin: 0;
+  color: rgba(229, 232, 245, 0.58);
+  font-size: 0.85rem;
+}
+
+.media-tag-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.media-tag-input-row input {
+  min-width: 0;
+  min-height: 42px;
+  padding: 9px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 11px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.055);
+  color: white;
+  font: inherit;
+}
+
+.media-tag-input-row input:focus {
+  border-color: rgba(176, 187, 255, 0.54);
+}
+
+.media-tag-input-row button {
+  min-width: 76px;
+  border: 1px solid rgba(185, 194, 255, 0.26);
+  border-radius: 11px;
+  background: rgba(121, 135, 220, 0.18);
+  color: white;
+  cursor: pointer;
+  font: inherit;
+}
+
+.media-tag-input-row button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.media-tag-suggestions {
+  display: grid;
+  gap: 10px;
+}
+
+.media-tag-suggestions > span {
+  color: rgba(235, 237, 248, 0.62);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.media-tag-suggestions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.media-tag-suggestions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(244, 246, 255, 0.9);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.74rem;
+}
+
+.media-tag-suggestions button:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.media-tag-suggestions small {
+  color: rgba(229, 232, 245, 0.46);
+}
+
+.media-tag-modal-actions {
+  justify-content: flex-end;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 700px) {
+  .memory-card-actions .media-tag-edit-button {
+    min-width: 31px;
+    min-height: 30px;
+    padding: 6px 8px;
+    opacity: 1;
+    transform: none;
+    font-size: 0.64rem;
+  }
+
+  .phone-media-tag-button {
+    right: 42px;
+    top: 8px;
+    min-height: 28px;
+    padding: 5px 8px;
+    font-size: 0.64rem;
+  }
+
+  .media-tag-modal-backdrop {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .media-tag-modal {
+    width: 100%;
+    max-height: 86vh;
+    border-radius: 18px 18px 12px 12px;
+  }
+
+  .media-tag-modal-header,
+  .media-tag-modal-actions,
+  .media-tag-editor-body {
+    padding: 16px;
+  }
+
+  .player-tag-button {
+    width: 100%;
+  }
+}
+
+.personal-entry-tags {
+  margin: 8px 12px 0;
+}
+
+.personal-entry-actions .media-tag-edit-button {
+  min-height: 34px;
+  padding: 7px 11px;
+}
+
+.playlist-item-tag-button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  margin-left: 8px;
+  padding: 7px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(244, 246, 255, 0.88);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.playlist-item-tag-button:hover,
+.ranking-tag-button:hover {
+  border-color: rgba(190, 200, 255, 0.42);
+  background: rgba(126, 140, 224, 0.16);
+}
+
+.ranking-tag-button {
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(244, 246, 255, 0.88);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+@media (max-width: 700px) {
+  .playlist-item-tag-button,
+  .ranking-tag-button {
+    min-height: 30px;
+    padding: 6px 9px;
+    font-size: 0.64rem;
+  }
+}

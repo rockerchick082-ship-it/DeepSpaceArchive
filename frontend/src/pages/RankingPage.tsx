@@ -15,6 +15,8 @@ import type {
 } from '../data/archive'
 
 import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
+import { useMediaTags } from '../data/mediaTags'
+import { MediaTagChips, MediaTagEditor } from '../components/MediaTagControls'
 
 
 type RankingCategory = {
@@ -547,6 +549,12 @@ function RankingPage() {
   const {
     characters: archiveCharacters,
   } = useArchiveCharacters()
+
+  const {
+    tags: availableTags,
+    tagsFor,
+    saveTags,
+  } = useMediaTags()
 
   const [
     searchParams,
@@ -2032,7 +2040,41 @@ function RankingPage() {
 
                           )}
 
+
+                          <MediaTagChips
+                            tags={
+                              tagsFor(
+                                item.category,
+                                item.relativePath
+                              )
+                            }
+                          />
+
                         </div>
+
+
+                        <MediaTagEditor
+                          title={
+                            item.title
+                          }
+                          tags={
+                            tagsFor(
+                              item.category,
+                              item.relativePath
+                            )
+                          }
+                          availableTags={
+                            availableTags
+                          }
+                          onSave={(nextTags) =>
+                            saveTags(
+                              item.category,
+                              item.relativePath,
+                              nextTags
+                            )
+                          }
+                          buttonClassName="ranking-tag-button"
+                        />
 
 
                         <button

@@ -26,6 +26,8 @@ import type {
 } from '../data/playlists'
 
 import PlaylistPicker from './PlaylistPicker'
+import { useMediaTags } from '../data/mediaTags'
+import { MediaTagChips, MediaTagEditor } from './MediaTagControls'
 
 
 declare global {
@@ -616,6 +618,13 @@ function VideoArchivePlayer({
 
   const navigate =
     useNavigate()
+
+
+  const {
+    tags: availableTags,
+    tagsFor,
+    saveTags,
+  } = useMediaTags()
 
 
   const [searchParams] =
@@ -3661,6 +3670,13 @@ useEffect(
     relativePath
 
 
+  const currentTags =
+    tagsFor(
+      categoryLabel,
+      currentRelativePath
+    )
+
+
   const localMediaUrl =
     mobileDownloaded &&
     mobileLocalPath
@@ -4503,6 +4519,14 @@ useEffect(
             {currentItem.title}
           </h1>
 
+
+          <MediaTagChips
+            tags={
+              currentTags
+            }
+            className="player-media-tags"
+          />
+
         </div>
 
       </header>
@@ -4906,6 +4930,28 @@ useEffect(
             : 'Favorite'}
 
         </button>
+
+
+        <MediaTagEditor
+          title={
+            currentItem.title
+          }
+          tags={
+            currentTags
+          }
+          availableTags={
+            availableTags
+          }
+          onSave={(nextTags) =>
+            saveTags(
+              categoryLabel,
+              currentRelativePath,
+              nextTags
+            )
+          }
+          buttonLabel="Edit Tags"
+          buttonClassName="player-tag-button"
+        />
 
 
         <div className="rating-control">

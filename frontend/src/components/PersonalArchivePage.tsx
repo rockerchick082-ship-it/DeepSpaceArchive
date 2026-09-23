@@ -11,9 +11,13 @@ import {
 } from 'react-router-dom'
 
 import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
+import { useMediaTags } from '../data/mediaTags'
 
 import ArchiveStateCard
   from './ArchiveStateCard'
+
+import { MediaTagChips, MediaTagEditor }
+  from './MediaTagControls'
 
 import type {
   ArchiveState,
@@ -239,6 +243,12 @@ function PersonalArchivePage({
 
   const { characters: discoveredCharacters } = useArchiveCharacters()
 
+  const {
+    tags: availableTags,
+    tagsFor,
+    saveTags,
+  } = useMediaTags()
+
   const navigate =
     useNavigate()
 
@@ -323,6 +333,15 @@ function PersonalArchivePage({
   const [
     selectedCategory,
     setSelectedCategory,
+  ] =
+    useState(
+      'All'
+    )
+
+
+  const [
+    selectedTag,
+    setSelectedTag,
   ] =
     useState(
       'All'
@@ -599,6 +618,30 @@ function PersonalArchivePage({
               }
 
 
+              const itemTags =
+                tagsFor(
+                  entry.state.category,
+                  entry.state.relativePath
+                )
+
+
+              const matchesTag =
+                selectedTag ===
+                  'All' ||
+                itemTags.some(
+                  (tag) =>
+                    tag ===
+                    selectedTag
+                )
+
+
+              if (!matchesTag) {
+
+                return false
+
+              }
+
+
               if (
                 !normalizedSearch
               ) {
@@ -632,7 +675,15 @@ function PersonalArchivePage({
                   .toLowerCase()
                   .includes(
                     normalizedSearch
-                  )
+                  ) ||
+                itemTags.some(
+                  (tag) =>
+                    tag
+                      .toLowerCase()
+                      .includes(
+                        normalizedSearch
+                      )
+                )
               )
 
             }
@@ -818,7 +869,9 @@ function PersonalArchivePage({
         searchText,
         selectedCategory,
         selectedCharacter,
+        selectedTag,
         sortMode,
+        tagsFor,
       ]
     )
 
@@ -906,6 +959,8 @@ function PersonalArchivePage({
       'All' ||
     selectedCategory !==
       'All' ||
+    selectedTag !==
+      'All' ||
     searchText.trim() !==
       '' ||
     sortMode !==
@@ -934,6 +989,11 @@ function PersonalArchivePage({
 
 
     setSelectedCategory(
+      'All'
+    )
+
+
+    setSelectedTag(
       'All'
     )
 
@@ -1359,7 +1419,42 @@ function PersonalArchivePage({
         />
 
 
+        <MediaTagChips
+          tags={
+            tagsFor(
+              entry.state.category,
+              entry.state.relativePath
+            )
+          }
+          className="personal-entry-tags"
+        />
+
+
         <div className="personal-entry-actions">
+
+          <MediaTagEditor
+            title={
+              getEntryTitle(
+                entry
+              )
+            }
+            tags={
+              tagsFor(
+                entry.state.category,
+                entry.state.relativePath
+              )
+            }
+            availableTags={
+              availableTags
+            }
+            onSave={(nextTags) =>
+              saveTags(
+                entry.state.category,
+                entry.state.relativePath,
+                nextTags
+              )
+            }
+          />
 
           {mode ===
             'favorites' ? (
@@ -1645,6 +1740,43 @@ function PersonalArchivePage({
                     }
                   >
                     {category}
+                  </option>
+
+                )
+              )}
+
+            </select>
+
+
+            <select
+              value={
+                selectedTag
+              }
+              onChange={(event) =>
+                setSelectedTag(
+                  event.target.value
+                )
+              }
+              aria-label="Media tag"
+            >
+
+              <option value="All">
+                All Tags
+              </option>
+
+
+              {availableTags.map(
+                (tag) => (
+
+                  <option
+                    key={
+                      tag.name
+                    }
+                    value={
+                      tag.name
+                    }
+                  >
+                    {tag.name} ({tag.count})
                   </option>
 
                 )

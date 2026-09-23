@@ -17,6 +17,8 @@ import type {
 } from '../data/memoria'
 
 import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
+import { useMediaTags } from '../data/mediaTags'
+import { MediaTagChips, MediaTagEditor } from '../components/MediaTagControls'
 
 
 type LibraryResponse = {
@@ -38,6 +40,12 @@ function IllusioPage() {
     'All',
     ...discoveredCharacters,
   ]
+
+  const {
+    tags: availableTags,
+    tagsFor,
+    saveTags,
+  } = useMediaTags()
 
 
   const [
@@ -64,6 +72,14 @@ function IllusioPage() {
   ] =
     useState(
       ''
+    )
+
+  const [
+    selectedTag,
+    setSelectedTag,
+  ] =
+    useState(
+      'All'
     )
 
 
@@ -183,6 +199,30 @@ function IllusioPage() {
             }
 
 
+            const itemTags =
+              tagsFor(
+                item.category,
+                item.relativePath
+              )
+
+
+            const tagMatches =
+              selectedTag ===
+                'All' ||
+              itemTags.some(
+                (tag) =>
+                  tag ===
+                  selectedTag
+              )
+
+
+            if (!tagMatches) {
+
+              return false
+
+            }
+
+
             if (!query) {
 
               return true
@@ -200,7 +240,15 @@ function IllusioPage() {
                 .toLowerCase()
                 .includes(
                   query
-                )
+                ) ||
+              itemTags.some(
+                (tag) =>
+                  tag
+                    .toLowerCase()
+                    .includes(
+                      query
+                    )
+              )
             )
 
           }
@@ -210,7 +258,9 @@ function IllusioPage() {
       [
         items,
         selectedCharacter,
+        selectedTag,
         searchText,
+        tagsFor,
       ]
     )
 
@@ -312,18 +362,59 @@ function IllusioPage() {
         </div>
 
 
-        <input
-          className="memory-search"
-          value={
-            searchText
-          }
-          placeholder="Search Illusio..."
-          onChange={(event) =>
-            setSearchText(
-              event.target.value
-            )
-          }
-        />
+        <div className="archive-toolbar-row illusio-toolbar-row">
+
+          <input
+            className="memory-search archive-toolbar-search"
+            value={
+              searchText
+            }
+            placeholder="Search Illusio..."
+            onChange={(event) =>
+              setSearchText(
+                event.target.value
+              )
+            }
+          />
+
+
+          <select
+            className="archive-toolbar-select"
+            aria-label="Filter Illusio by tag"
+            value={
+              selectedTag
+            }
+            onChange={(event) =>
+              setSelectedTag(
+                event.target.value
+              )
+            }
+          >
+
+            <option value="All">
+              All Tags
+            </option>
+
+            {availableTags.map(
+              (tag) => (
+
+                <option
+                  key={
+                    tag.name
+                  }
+                  value={
+                    tag.name
+                  }
+                >
+                  {tag.name} ({tag.count})
+                </option>
+
+              )
+            )}
+
+          </select>
+
+        </div>
 
 
         <div className="illusio-result-count">
@@ -375,50 +466,89 @@ function IllusioPage() {
             {filteredItems.map(
               (item) => (
 
-                <button
-                  type="button"
-                  className="illusio-media-card"
+                <div
+                  className="illusio-media-card-wrapper"
                   key={
                     item.relativePath
                   }
-                  onClick={() => {
-
-                    const query =
-                      new URLSearchParams({
-
-                        file:
-                          item.relativePath,
-
-                      })
-
-
-                    navigate(
-                      `/illusio/watch?${query}`
-                    )
-
-                  }}
                 >
 
-                  <IllusioThumbnail
-                    item={
-                      item
+                  <button
+                    type="button"
+                    className="illusio-media-card"
+                    onClick={() => {
+
+                      const query =
+                        new URLSearchParams({
+
+                          file:
+                            item.relativePath,
+
+                        })
+
+
+                      navigate(
+                        `/illusio/watch?${query}`
+                      )
+
+                    }}
+                  >
+
+                    <IllusioThumbnail
+                      item={
+                        item
+                      }
+                    />
+
+
+                    <div className="illusio-media-info">
+
+                      <strong>
+                        {item.title}
+                      </strong>
+
+                      <span>
+                        {item.character}
+                      </span>
+
+
+                      <MediaTagChips
+                        tags={
+                          tagsFor(
+                            item.category,
+                            item.relativePath
+                          )
+                        }
+                      />
+
+                    </div>
+
+                  </button>
+
+
+                  <MediaTagEditor
+                    title={
+                      item.title
+                    }
+                    tags={
+                      tagsFor(
+                        item.category,
+                        item.relativePath
+                      )
+                    }
+                    availableTags={
+                      availableTags
+                    }
+                    onSave={(nextTags) =>
+                      saveTags(
+                        item.category,
+                        item.relativePath,
+                        nextTags
+                      )
                     }
                   />
 
-
-                  <div className="illusio-media-info">
-
-                    <strong>
-                      {item.title}
-                    </strong>
-
-                    <span>
-                      {item.character}
-                    </span>
-
-                  </div>
-
-                </button>
+                </div>
 
               )
             )}

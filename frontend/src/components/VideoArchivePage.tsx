@@ -17,6 +17,8 @@ import type {
 import MemoryEditor from './MemoryEditor'
 import ArchiveSequenceNav from './ArchiveSequenceNav'
 import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
+import { useMediaTags } from '../data/mediaTags'
+import { MediaTagChips, MediaTagEditor } from './MediaTagControls'
 
 
 const characterStorageKey =
@@ -398,6 +400,12 @@ function VideoArchivePage({
     ...discoveredCharacters,
   ]
 
+  const {
+    tags: availableTags,
+    tagsFor,
+    saveTags,
+  } = useMediaTags()
+
   const [
     items,
     setItems,
@@ -439,6 +447,14 @@ function VideoArchivePage({
   ] =
     useState<ArchiveStatusFilter>(
       'all'
+    )
+
+  const [
+    selectedTag,
+    setSelectedTag,
+  ] =
+    useState(
+      'All'
     )
 
   const [
@@ -919,13 +935,38 @@ function VideoArchivePage({
                   selectedCharacter
 
 
+              const itemTags =
+                tagsFor(
+                  item.category,
+                  item.relativePath
+                )
+
+
               const matchesSearch =
                 !normalizedSearch ||
                 item.title
                   .toLowerCase()
                   .includes(
                     normalizedSearch
-                  )
+                  ) ||
+                itemTags.some(
+                  (tag) =>
+                    tag
+                      .toLowerCase()
+                      .includes(
+                        normalizedSearch
+                      )
+                )
+
+
+              const matchesTag =
+                selectedTag ===
+                  'All' ||
+                itemTags.some(
+                  (tag) =>
+                    tag ===
+                    selectedTag
+                )
 
 
               const state =
@@ -993,6 +1034,7 @@ function VideoArchivePage({
               return (
                 matchesCharacter &&
                 matchesSearch &&
+                matchesTag &&
                 matchesStatus
               )
 
@@ -1064,8 +1106,10 @@ function VideoArchivePage({
         items,
         searchText,
         selectedCharacter,
+        selectedTag,
         sortMode,
         statusFilter,
+        tagsFor,
       ]
     )
 
@@ -1077,7 +1121,9 @@ function VideoArchivePage({
       searchText.trim()
     ) ||
     statusFilter !==
-      'all'
+      'all' ||
+    selectedTag !==
+      'All'
 
 
   function selectCharacter(
@@ -1108,6 +1154,10 @@ function VideoArchivePage({
 
     setStatusFilter(
       'all'
+    )
+
+    setSelectedTag(
+      'All'
     )
 
   }
@@ -1358,6 +1408,43 @@ function VideoArchivePage({
 
           <select
             className="archive-toolbar-select"
+            aria-label="Filter by tag"
+            value={
+              selectedTag
+            }
+            onChange={(event) =>
+              setSelectedTag(
+                event.target.value
+              )
+            }
+          >
+
+            <option value="All">
+              All Tags
+            </option>
+
+            {availableTags.map(
+              (tag) => (
+
+                <option
+                  key={
+                    tag.name
+                  }
+                  value={
+                    tag.name
+                  }
+                >
+                  {tag.name} ({tag.count})
+                </option>
+
+              )
+            )}
+
+          </select>
+
+
+          <select
+            className="archive-toolbar-select"
             aria-label="Sort archive"
             value={
               sortMode
@@ -1548,6 +1635,22 @@ function VideoArchivePage({
                       archiveState={
                         archiveState
                       }
+                      tags={
+                        tagsFor(
+                          item.category,
+                          item.relativePath
+                        )
+                      }
+                      availableTags={
+                        availableTags
+                      }
+                      onSaveTags={(nextTags) =>
+                        saveTags(
+                          item.category,
+                          item.relativePath,
+                          nextTags
+                        )
+                      }
                       allowEditing={
                         allowEditing
                       }
@@ -1665,6 +1768,9 @@ function VideoArchivePage({
 type VideoArchiveCardProps = {
   item: ArchiveItem
   archiveState?: ArchiveStateSummary
+  tags: string[]
+  availableTags: ReturnType<typeof useMediaTags>['tags']
+  onSaveTags: (tags: string[]) => Promise<unknown>
   allowEditing: boolean
   favoriteSaving: boolean
   isMobileApp: boolean
@@ -1679,6 +1785,9 @@ type VideoArchiveCardProps = {
 function VideoArchiveCard({
   item,
   archiveState,
+  tags,
+  availableTags,
+  onSaveTags,
   allowEditing,
   favoriteSaving,
   isMobileApp,
@@ -2221,6 +2330,13 @@ function VideoArchiveCard({
           </span>
 
 
+          <MediaTagChips
+            tags={
+              tags
+            }
+          />
+
+
           {displayedLinkedMemories.length >
             0 ? (
 
@@ -2317,6 +2433,22 @@ function VideoArchiveCard({
             ? '★'
             : '☆'}
         </button>
+
+
+        <MediaTagEditor
+          title={
+            item.title
+          }
+          tags={
+            tags
+          }
+          availableTags={
+            availableTags
+          }
+          onSave={
+            onSaveTags
+          }
+        />
 
 
         {allowEditing && (

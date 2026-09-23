@@ -15,6 +15,8 @@ import type {
 } from '../data/archive'
 
 import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
+import { useMediaTags } from '../data/mediaTags'
+import { MediaTagChips, MediaTagEditor } from './MediaTagControls'
 
 
 type PhoneArchivePageProps = {
@@ -289,6 +291,12 @@ function PhoneArchivePage({
     ...discoveredCharacters,
   ]
 
+  const {
+    tags: availableTags,
+    tagsFor,
+    saveTags,
+  } = useMediaTags()
+
   const navigate =
     useNavigate()
 
@@ -333,6 +341,14 @@ function PhoneArchivePage({
   ] =
     useState<PhoneStatusFilter>(
       'all'
+    )
+
+  const [
+    selectedTag,
+    setSelectedTag,
+  ] =
+    useState(
+      'All'
     )
 
   const [
@@ -630,6 +646,13 @@ function PhoneArchivePage({
               }
 
 
+              const itemTags =
+                tagsFor(
+                  item.category,
+                  item.relativePath
+                )
+
+
               const matchesSearch =
                 !normalizedSearch ||
                 item.title
@@ -641,10 +664,35 @@ function PhoneArchivePage({
                   .toLowerCase()
                   .includes(
                     normalizedSearch
-                  )
+                  ) ||
+                itemTags.some(
+                  (tag) =>
+                    tag
+                      .toLowerCase()
+                      .includes(
+                        normalizedSearch
+                      )
+                )
 
 
               if (!matchesSearch) {
+
+                return false
+
+              }
+
+
+              const matchesTag =
+                selectedTag ===
+                  'All' ||
+                itemTags.some(
+                  (tag) =>
+                    tag ===
+                    selectedTag
+                )
+
+
+              if (!matchesTag) {
 
                 return false
 
@@ -765,8 +813,10 @@ function PhoneArchivePage({
         items,
         searchText,
         selectedCharacter,
+        selectedTag,
         sortMode,
         statusFilter,
+        tagsFor,
       ]
     )
 
@@ -778,7 +828,9 @@ function PhoneArchivePage({
       searchText.trim()
     ) ||
     statusFilter !==
-      'all'
+      'all' ||
+    selectedTag !==
+      'All'
 
 
   function clearFilters() {
@@ -793,6 +845,10 @@ function PhoneArchivePage({
 
     setStatusFilter(
       'all'
+    )
+
+    setSelectedTag(
+      'All'
     )
 
   }
@@ -1086,6 +1142,43 @@ function PhoneArchivePage({
               <option value="not-started">
                 Not Started
               </option>
+
+            </select>
+
+
+            <select
+              className="archive-toolbar-select"
+              aria-label="Filter by tag"
+              value={
+                selectedTag
+              }
+              onChange={(event) =>
+                setSelectedTag(
+                  event.target.value
+                )
+              }
+            >
+
+              <option value="All">
+                All Tags
+              </option>
+
+              {availableTags.map(
+                (tag) => (
+
+                  <option
+                    key={
+                      tag.name
+                    }
+                    value={
+                      tag.name
+                    }
+                  >
+                    {tag.name} ({tag.count})
+                  </option>
+
+                )
+              )}
 
             </select>
 
@@ -1387,6 +1480,16 @@ function PhoneArchivePage({
 
                             )}
 
+
+                            <MediaTagChips
+                              tags={
+                                tagsFor(
+                                  item.category,
+                                  item.relativePath
+                                )
+                              }
+                            />
+
                           </div>
 
 
@@ -1428,6 +1531,30 @@ function PhoneArchivePage({
                             ? '★'
                             : '☆'}
                         </button>
+
+
+                        <MediaTagEditor
+                          title={
+                            item.title
+                          }
+                          tags={
+                            tagsFor(
+                              item.category,
+                              item.relativePath
+                            )
+                          }
+                          availableTags={
+                            availableTags
+                          }
+                          onSave={(nextTags) =>
+                            saveTags(
+                              item.category,
+                              item.relativePath,
+                              nextTags
+                            )
+                          }
+                          buttonClassName="phone-media-tag-button"
+                        />
 
                       </div>
 

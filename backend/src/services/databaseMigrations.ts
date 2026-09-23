@@ -13,7 +13,7 @@ import {
 
 
 export const applicationDatabaseSchemaVersion =
-  4
+  6
 
 
 export const catalogDatabaseSchemaVersion =
@@ -619,6 +619,95 @@ function applicationMigrationV4(
 }
 
 
+function applicationMigrationV5(
+  database: DatabaseSync
+) {
+
+  database.exec(`
+    PRAGMA foreign_keys = ON;
+    BEGIN IMMEDIATE;
+
+    CREATE TABLE IF NOT EXISTS archive_integrity_run (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scan_token TEXT NOT NULL UNIQUE,
+      mode TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      file_count INTEGER NOT NULL DEFAULT 0,
+      error TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS archive_file_manifest (
+      relative_path TEXT PRIMARY KEY,
+      media_type TEXT NOT NULL,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      last_seen_scan TEXT,
+      pending_scan TEXT,
+      size_bytes INTEGER NOT NULL,
+      mtime_ms REAL NOT NULL,
+      sha256 TEXT,
+      observed_size_bytes INTEGER NOT NULL,
+      observed_mtime_ms REAL NOT NULL,
+      observed_sha256 TEXT,
+      verified_at TEXT,
+      accepted_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS
+      idx_archive_file_manifest_seen
+    ON archive_file_manifest(
+      last_seen_scan
+    );
+
+    CREATE INDEX IF NOT EXISTS
+      idx_archive_file_manifest_hash
+    ON archive_file_manifest(
+      sha256
+    );
+
+    CREATE INDEX IF NOT EXISTS
+      idx_archive_file_manifest_observed_hash
+    ON archive_file_manifest(
+      observed_sha256
+    );
+
+    PRAGMA user_version = 5;
+    COMMIT;
+  `)
+
+}
+
+
+function applicationMigrationV6(
+  database: DatabaseSync
+) {
+
+  database.exec(`
+    PRAGMA foreign_keys = ON;
+    BEGIN IMMEDIATE;
+
+    CREATE TABLE IF NOT EXISTS smart_playlist (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      rules_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS
+      idx_smart_playlist_updated
+    ON smart_playlist(
+      updated_at DESC
+    );
+
+    PRAGMA user_version = 6;
+    COMMIT;
+  `)
+
+}
+
+
 function getTableSql(
   database: DatabaseSync,
   tableName: string
@@ -1096,6 +1185,28 @@ const applicationMigrations:
 
     run:
       applicationMigrationV4,
+  },
+
+  {
+    version:
+      5,
+
+    name:
+      'Add archive integrity manifest',
+
+    run:
+      applicationMigrationV5,
+  },
+
+  {
+    version:
+      6,
+
+    name:
+      'Add smart playlists',
+
+    run:
+      applicationMigrationV6,
   },
 
 ]

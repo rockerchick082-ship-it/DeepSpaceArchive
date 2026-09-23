@@ -9,18 +9,17 @@ import {
   scanCategory,
 } from '../scanner/libraryScanner'
 
+import {
+  categoryScanDefinitions,
+} from '../services/archiveCategories'
+
+import {
+  isIgnoredArchiveDirectory,
+} from '../services/archiveDirectoryRules'
+
 
 const router =
   Router()
-
-
-const archiveCategories = [
-  'Memoria',
-  'Secret Times',
-  'Myths',
-  'Bond',
-  'Tender Moments',
-]
 
 
 const mediaExtensions =
@@ -166,6 +165,17 @@ async function collectRawFiles(
     if (
       entry.isDirectory()
     ) {
+
+      if (
+        isIgnoredArchiveDirectory(
+          entry.name
+        )
+      ) {
+
+        continue
+
+      }
+
 
       const nested =
         await collectRawFiles(
@@ -349,9 +359,12 @@ router.get(
 
 
       for (
-        const category
-        of archiveCategories
+        const definition
+        of categoryScanDefinitions
       ) {
+
+        const category =
+          definition.libraryCategories[0]
 
         try {
 
@@ -363,9 +376,7 @@ router.get(
 
 
           const categoryKey =
-            normalizeCategoryKey(
-              category
-            )
+            definition.key
 
 
           categoryCounts[
@@ -438,9 +449,7 @@ router.get(
 
 
           categoryCounts[
-            normalizeCategoryKey(
-              category
-            )
+            definition.key
           ] =
             0
 
@@ -459,34 +468,26 @@ router.get(
 
         totalMedia,
 
-        categories: {
+        categories:
+          Object.fromEntries(
+            categoryScanDefinitions.map(
+              (definition) => [
+                definition.key,
+                categoryCounts[
+                  definition.key
+                ] ?? 0,
+              ]
+            )
+          ),
 
-          memoria:
-            categoryCounts[
-              'memoria'
-            ] ?? 0,
-
-          secretTimes:
-            categoryCounts[
-              'secret-times'
-            ] ?? 0,
-
-          myths:
-            categoryCounts[
-              'myths'
-            ] ?? 0,
-
-          bond:
-            categoryCounts[
-              'bond'
-            ] ?? 0,
-
-          tenderMoments:
-            categoryCounts[
-              'tender-moments'
-            ] ?? 0,
-
-        },
+        categoryDefinitions:
+          categoryScanDefinitions.map(
+            (definition) => ({
+              key: definition.key,
+              label: definition.label,
+              stateCategory: definition.stateCategory,
+            })
+          ),
 
         characters:
           characterCounts,
@@ -573,9 +574,12 @@ router.get(
 
 
       for (
-        const category
-        of archiveCategories
+        const definition
+        of categoryScanDefinitions
       ) {
+
+        const category =
+          definition.libraryCategories[0]
 
         try {
 
@@ -614,9 +618,12 @@ router.get(
 
 
       for (
-        const category
-        of archiveCategories
+        const definition
+        of categoryScanDefinitions
       ) {
+
+        const category =
+          definition.libraryCategories[0]
 
         const categoryPath =
           path.join(

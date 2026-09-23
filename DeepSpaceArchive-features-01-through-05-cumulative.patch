@@ -1,0 +1,8655 @@
+diff --git a/backend/src/routes/archiveIntegrityRoutes.ts b/backend/src/routes/archiveIntegrityRoutes.ts
+new file mode 100644
+index 0000000..04db4fa
+--- /dev/null
++++ b/backend/src/routes/archiveIntegrityRoutes.ts
+@@ -0,0 +1,349 @@
++import {
++  createHash,
++  randomUUID,
++} from 'node:crypto'
++
++import {
++  createReadStream,
++} from 'node:fs'
++
++import {
++  Router,
++} from 'express'
++
++import {
++  collectArchiveMediaFiles,
++} from '../services/archiveFileInventory'
++
++import {
++  acceptVerifiedIntegrityChanges,
++  beginIntegrityRun,
++  failIntegrityRun,
++  finishIntegrityRun,
++  getArchiveIntegrityReport,
++  observeIntegrityFile,
++  verifyIntegrityFile,
++} from '../state/archiveIntegrity'
++
++import type {
++  IntegrityMode,
++} from '../state/archiveIntegrity'
++
++
++export const archiveIntegrityRoutes =
++  Router()
++
++
++type IntegrityJob = {
++  id: string
++  mode: IntegrityMode
++  status:
++    | 'running'
++    | 'completed'
++    | 'failed'
++  startedAt: string
++  completedAt: string | null
++  total: number
++  processed: number
++  currentPath: string | null
++  error: string | null
++  warnings: string[]
++}
++
++
++let currentJob:
++  IntegrityJob | null =
++  null
++
++
++async function sha256File(
++  filePath: string
++) {
++  const hash =
++    createHash(
++      'sha256'
++    )
++
++  const stream =
++    createReadStream(
++      filePath
++    )
++
++  for await (
++    const chunk
++    of stream
++  ) {
++    hash.update(
++      chunk as Buffer
++    )
++  }
++
++  return hash.digest(
++    'hex'
++  )
++}
++
++
++async function runScan(
++  job: IntegrityJob,
++  libraryPath: string
++) {
++  const run =
++    beginIntegrityRun(
++      job.mode
++    )
++
++  try {
++    const files =
++      await collectArchiveMediaFiles(
++        libraryPath
++      )
++
++    job.total =
++      files.length
++
++    for (
++      const file
++      of files
++    ) {
++      job.currentPath =
++        file.relativePath
++
++      try {
++        if (
++          job.mode ===
++          'verify'
++        ) {
++          const sha256 =
++            await sha256File(
++              file.filePath
++            )
++
++          verifyIntegrityFile(
++            file,
++            sha256,
++            run.scanToken
++          )
++        } else {
++          observeIntegrityFile(
++            file,
++            run.scanToken
++          )
++        }
++      } catch (
++        fileError
++      ) {
++        observeIntegrityFile(
++          file,
++          run.scanToken
++        )
++
++        if (
++          job.warnings.length <
++          30
++        ) {
++          job.warnings.push(
++            `${file.relativePath}: ${
++              fileError instanceof Error
++                ? fileError.message
++                : String(fileError)
++            }`
++          )
++        }
++      }
++
++      job.processed +=
++        1
++    }
++
++    finishIntegrityRun(
++      run.id,
++      run.scanToken,
++      files.length
++    )
++
++    job.status =
++      'completed'
++    job.completedAt =
++      new Date().toISOString()
++    job.currentPath =
++      null
++  } catch (error) {
++    const message =
++      error instanceof Error
++        ? error.message
++        : String(error)
++
++    failIntegrityRun(
++      run.id,
++      run.scanToken,
++      message
++    )
++
++    job.status =
++      'failed'
++    job.error =
++      message
++    job.completedAt =
++      new Date().toISOString()
++    job.currentPath =
++      null
++  }
++}
++
++
++archiveIntegrityRoutes.get(
++  '/',
++  (
++    _request,
++    response
++  ) => {
++    response.json({
++      ...getArchiveIntegrityReport(),
++      job:
++        currentJob,
++    })
++  }
++)
++
++
++archiveIntegrityRoutes.get(
++  '/job',
++  (
++    _request,
++    response
++  ) => {
++    response.json({
++      job:
++        currentJob,
++    })
++  }
++)
++
++
++archiveIntegrityRoutes.post(
++  '/scan',
++  (
++    request,
++    response
++  ) => {
++    const libraryPath =
++      process.env.MEDIA_LIBRARY_PATH
++
++    if (!libraryPath) {
++      response
++        .status(500)
++        .json({
++          error:
++            'MEDIA_LIBRARY_PATH is not configured.',
++        })
++      return
++    }
++
++    if (
++      currentJob?.status ===
++      'running'
++    ) {
++      response
++        .status(409)
++        .json({
++          error:
++            'An archive integrity scan is already running.',
++          job:
++            currentJob,
++        })
++      return
++    }
++
++    const mode:
++      IntegrityMode =
++        request.body?.mode ===
++          'verify'
++          ? 'verify'
++          : 'quick'
++
++    const job:
++      IntegrityJob = {
++        id:
++          randomUUID(),
++        mode,
++        status:
++          'running',
++        startedAt:
++          new Date().toISOString(),
++        completedAt:
++          null,
++        total:
++          0,
++        processed:
++          0,
++        currentPath:
++          null,
++        error:
++          null,
++        warnings:
++          [],
++      }
++
++    currentJob =
++      job
++
++    void runScan(
++      job,
++      libraryPath
++    )
++
++    response
++      .status(202)
++      .json({
++        job,
++      })
++  }
++)
++
++
++archiveIntegrityRoutes.post(
++  '/accept',
++  (
++    request,
++    response
++  ) => {
++    try {
++      const relativePaths =
++        Array.isArray(
++          request.body?.relativePaths
++        )
++          ? request.body.relativePaths.filter(
++              (
++                value: unknown
++              ): value is string =>
++                typeof value ===
++                  'string'
++            )
++          : undefined
++
++      const updated =
++        acceptVerifiedIntegrityChanges(
++          relativePaths
++        )
++
++      response.json({
++        updated,
++        report:
++          getArchiveIntegrityReport(),
++      })
++    } catch (error) {
++      response
++        .status(500)
++        .json({
++          error:
++            error instanceof Error
++              ? error.message
++              : 'Unable to accept archive integrity changes.',
++        })
++    }
++  }
++)
++
++
++export default archiveIntegrityRoutes
+diff --git a/backend/src/routes/libraryHealthRoutes.ts b/backend/src/routes/libraryHealthRoutes.ts
+index cf68f18..11d146d 100644
+--- a/backend/src/routes/libraryHealthRoutes.ts
++++ b/backend/src/routes/libraryHealthRoutes.ts
+@@ -9,18 +9,17 @@ import {
+   scanCategory,
+ } from '../scanner/libraryScanner'
+ 
++import {
++  categoryScanDefinitions,
++} from '../services/archiveCategories'
+ 
+-const router =
+-  Router()
++import {
++  isIgnoredArchiveDirectory,
++} from '../services/archiveDirectoryRules'
+ 
+ 
+-const archiveCategories = [
+-  'Memoria',
+-  'Secret Times',
+-  'Myths',
+-  'Bond',
+-  'Tender Moments',
+-]
++const router =
++  Router()
+ 
+ 
+ const mediaExtensions =
+@@ -167,6 +166,17 @@ async function collectRawFiles(
+       entry.isDirectory()
+     ) {
+ 
++      if (
++        isIgnoredArchiveDirectory(
++          entry.name
++        )
++      ) {
++
++        continue
++
++      }
++
++
+       const nested =
+         await collectRawFiles(
+           absolutePath,
+@@ -349,10 +359,13 @@ router.get(
+ 
+ 
+       for (
+-        const category
+-        of archiveCategories
++        const definition
++        of categoryScanDefinitions
+       ) {
+ 
++        const category =
++          definition.libraryCategories[0]
++
+         try {
+ 
+           const items =
+@@ -363,9 +376,7 @@ router.get(
+ 
+ 
+           const categoryKey =
+-            normalizeCategoryKey(
+-              category
+-            )
++            definition.key
+ 
+ 
+           categoryCounts[
+@@ -438,9 +449,7 @@ router.get(
+ 
+ 
+           categoryCounts[
+-            normalizeCategoryKey(
+-              category
+-            )
++            definition.key
+           ] =
+             0
+ 
+@@ -459,34 +468,26 @@ router.get(
+ 
+         totalMedia,
+ 
+-        categories: {
+-
+-          memoria:
+-            categoryCounts[
+-              'memoria'
+-            ] ?? 0,
+-
+-          secretTimes:
+-            categoryCounts[
+-              'secret-times'
+-            ] ?? 0,
+-
+-          myths:
+-            categoryCounts[
+-              'myths'
+-            ] ?? 0,
+-
+-          bond:
+-            categoryCounts[
+-              'bond'
+-            ] ?? 0,
+-
+-          tenderMoments:
+-            categoryCounts[
+-              'tender-moments'
+-            ] ?? 0,
++        categories:
++          Object.fromEntries(
++            categoryScanDefinitions.map(
++              (definition) => [
++                definition.key,
++                categoryCounts[
++                  definition.key
++                ] ?? 0,
++              ]
++            )
++          ),
+ 
+-        },
++        categoryDefinitions:
++          categoryScanDefinitions.map(
++            (definition) => ({
++              key: definition.key,
++              label: definition.label,
++              stateCategory: definition.stateCategory,
++            })
++          ),
+ 
+         characters:
+           characterCounts,
+@@ -573,10 +574,13 @@ router.get(
+ 
+ 
+       for (
+-        const category
+-        of archiveCategories
++        const definition
++        of categoryScanDefinitions
+       ) {
+ 
++        const category =
++          definition.libraryCategories[0]
++
+         try {
+ 
+           const items =
+@@ -614,10 +618,13 @@ router.get(
+ 
+ 
+       for (
+-        const category
+-        of archiveCategories
++        const definition
++        of categoryScanDefinitions
+       ) {
+ 
++        const category =
++          definition.libraryCategories[0]
++
+         const categoryPath =
+           path.join(
+             libraryRoot,
+diff --git a/backend/src/routes/mediaTagRoutes.ts b/backend/src/routes/mediaTagRoutes.ts
+index 14e2867..734a822 100644
+--- a/backend/src/routes/mediaTagRoutes.ts
++++ b/backend/src/routes/mediaTagRoutes.ts
+@@ -3,9 +3,12 @@ import {
+ } from 'express'
+ 
+ import {
++  bulkUpdateMediaTags,
++  deleteMediaTag,
+   getMediaTags,
+   listMediaTagAssignments,
+   listMediaTagSummaries,
++  renameMediaTag,
+   setMediaTags,
+ } from '../state/mediaTags'
+ 
+@@ -173,4 +176,236 @@ mediaTagRoutes.put(
+ )
+ 
+ 
++mediaTagRoutes.post(
++  '/bulk',
++  (
++    request,
++    response
++  ) => {
++
++    try {
++
++      const items =
++        Array.isArray(
++          request.body?.items
++        )
++          ? request.body.items.filter(
++              (
++                item: unknown
++              ): item is {
++                category: string
++                relativePath: string
++              } =>
++                Boolean(
++                  item &&
++                  typeof item === 'object' &&
++                  typeof (
++                    item as {
++                      category?: unknown
++                    }
++                  ).category === 'string' &&
++                  typeof (
++                    item as {
++                      relativePath?: unknown
++                    }
++                  ).relativePath === 'string'
++                )
++            )
++          : []
++
++      const addTags =
++        Array.isArray(
++          request.body?.addTags
++        )
++          ? request.body.addTags.filter(
++              (
++                tag: unknown
++              ): tag is string =>
++                typeof tag === 'string'
++            )
++          : []
++
++      const removeTags =
++        Array.isArray(
++          request.body?.removeTags
++        )
++          ? request.body.removeTags.filter(
++              (
++                tag: unknown
++              ): tag is string =>
++                typeof tag === 'string'
++            )
++          : []
++
++
++      if (
++        items.length === 0 ||
++        (
++          addTags.length === 0 &&
++          removeTags.length === 0
++        )
++      ) {
++
++        response
++          .status(400)
++          .json({
++            error:
++              'At least one media item and one tag change are required.',
++          })
++
++        return
++
++      }
++
++
++      const updated =
++        bulkUpdateMediaTags(
++          items,
++          addTags,
++          removeTags
++        )
++
++
++      response.json({
++        updated,
++        tags:
++          listMediaTagSummaries(),
++        assignments:
++          listMediaTagAssignments(),
++      })
++
++    } catch (error) {
++
++      console.error(
++        'Unable to bulk update media tags:',
++        error
++      )
++
++      response
++        .status(500)
++        .json({
++          error:
++            error instanceof Error
++              ? error.message
++              : 'Unable to bulk update media tags.',
++        })
++
++    }
++
++  }
++)
++
++
++mediaTagRoutes.put(
++  '/tag',
++  (
++    request,
++    response
++  ) => {
++
++    try {
++
++      const currentName =
++        typeof request.body?.currentName === 'string'
++          ? request.body.currentName
++          : ''
++
++      const newName =
++        typeof request.body?.newName === 'string'
++          ? request.body.newName
++          : ''
++
++
++      const result =
++        renameMediaTag(
++          currentName,
++          newName
++        )
++
++
++      response.json({
++        ...result,
++        tags:
++          listMediaTagSummaries(),
++        assignments:
++          listMediaTagAssignments(),
++      })
++
++    } catch (error) {
++
++      response
++        .status(400)
++        .json({
++          error:
++            error instanceof Error
++              ? error.message
++              : 'Unable to rename tag.',
++        })
++
++    }
++
++  }
++)
++
++
++mediaTagRoutes.delete(
++  '/tag',
++  (
++    request,
++    response
++  ) => {
++
++    try {
++
++      const name =
++        typeof request.query.name === 'string'
++          ? request.query.name
++          : ''
++
++
++      if (!name.trim()) {
++
++        response
++          .status(400)
++          .json({
++            error:
++              'Tag name is required.',
++          })
++
++        return
++
++      }
++
++
++      const deleted =
++        deleteMediaTag(
++          name
++        )
++
++
++      response.json({
++        deleted,
++        tags:
++          listMediaTagSummaries(),
++        assignments:
++          listMediaTagAssignments(),
++      })
++
++    } catch (error) {
++
++      response
++        .status(500)
++        .json({
++          error:
++            error instanceof Error
++              ? error.message
++              : 'Unable to delete tag.',
++        })
++
++    }
++
++  }
++)
++
++
+ export default mediaTagRoutes
+diff --git a/backend/src/routes/smartPlaylistRoutes.ts b/backend/src/routes/smartPlaylistRoutes.ts
+new file mode 100644
+index 0000000..29c26a3
+--- /dev/null
++++ b/backend/src/routes/smartPlaylistRoutes.ts
+@@ -0,0 +1,192 @@
++import {
++  Router,
++} from 'express'
++
++import {
++  createSmartPlaylist,
++  deleteSmartPlaylist,
++  getSmartPlaylist,
++  listSmartPlaylists,
++  updateSmartPlaylist,
++} from '../state/smartPlaylists'
++
++
++export const smartPlaylistRoutes =
++  Router()
++
++
++smartPlaylistRoutes.get(
++  '/',
++  (
++    _request,
++    response
++  ) => {
++    response.json({
++      items:
++        listSmartPlaylists(),
++    })
++  }
++)
++
++
++smartPlaylistRoutes.get(
++  '/:id',
++  (
++    request,
++    response
++  ) => {
++    const id =
++      Number(
++        request.params.id
++      )
++
++    if (!Number.isInteger(id)) {
++      response
++        .status(400)
++        .json({
++          error:
++            'Invalid smart playlist ID.',
++        })
++      return
++    }
++
++    const item =
++      getSmartPlaylist(id)
++
++    if (!item) {
++      response
++        .status(404)
++        .json({
++          error:
++            'Smart playlist was not found.',
++        })
++      return
++    }
++
++    response.json(item)
++  }
++)
++
++
++smartPlaylistRoutes.post(
++  '/',
++  (
++    request,
++    response
++  ) => {
++    try {
++      const name =
++        typeof request.body?.name ===
++          'string'
++          ? request.body.name
++          : ''
++
++      const item =
++        createSmartPlaylist(
++          name,
++          request.body?.rules
++        )
++
++      response
++        .status(201)
++        .json(item)
++    } catch (error) {
++      response
++        .status(400)
++        .json({
++          error:
++            error instanceof Error
++              ? error.message
++              : 'Unable to create smart playlist.',
++        })
++    }
++  }
++)
++
++
++smartPlaylistRoutes.put(
++  '/:id',
++  (
++    request,
++    response
++  ) => {
++    try {
++      const id =
++        Number(
++          request.params.id
++        )
++
++      if (!Number.isInteger(id)) {
++        throw new Error(
++          'Invalid smart playlist ID.'
++        )
++      }
++
++      const name =
++        typeof request.body?.name ===
++          'string'
++          ? request.body.name
++          : ''
++
++      const item =
++        updateSmartPlaylist(
++          id,
++          name,
++          request.body?.rules
++        )
++
++      if (!item) {
++        response
++          .status(404)
++          .json({
++            error:
++              'Smart playlist was not found.',
++          })
++        return
++      }
++
++      response.json(item)
++    } catch (error) {
++      response
++        .status(400)
++        .json({
++          error:
++            error instanceof Error
++              ? error.message
++              : 'Unable to update smart playlist.',
++        })
++    }
++  }
++)
++
++
++smartPlaylistRoutes.delete(
++  '/:id',
++  (
++    request,
++    response
++  ) => {
++    const id =
++      Number(
++        request.params.id
++      )
++
++    if (!Number.isInteger(id)) {
++      response
++        .status(400)
++        .json({
++          error:
++            'Invalid smart playlist ID.',
++        })
++      return
++    }
++
++    response.json({
++      deleted:
++        deleteSmartPlaylist(id),
++    })
++  }
++)
++
++
++export default smartPlaylistRoutes
+diff --git a/backend/src/scanner/mainStoryScanner.ts b/backend/src/scanner/mainStoryScanner.ts
+index 4495ca6..722e706 100644
+--- a/backend/src/scanner/mainStoryScanner.ts
++++ b/backend/src/scanner/mainStoryScanner.ts
+@@ -1,6 +1,10 @@
+ import fs from 'node:fs/promises'
+ import path from 'node:path'
+ 
++import {
++  isIgnoredArchiveDirectory,
++} from '../services/archiveDirectoryRules'
++
+ 
+ const videoExtensions =
+   new Set([
+@@ -770,7 +774,10 @@ async function scanBranch(
+     entries
+       .filter(
+         (entry) =>
+-          entry.isDirectory()
++          entry.isDirectory() &&
++          !isIgnoredArchiveDirectory(
++            entry.name
++          )
+       )
+       .sort(
+         (
+@@ -938,7 +945,10 @@ async function scanMainStory(
+     entries
+       .filter(
+         (entry) =>
+-          entry.isDirectory()
++          entry.isDirectory() &&
++          !isIgnoredArchiveDirectory(
++            entry.name
++          )
+       )
+       .sort(
+         (
+diff --git a/backend/src/server.ts b/backend/src/server.ts
+index a72b9e1..413a095 100644
+--- a/backend/src/server.ts
++++ b/backend/src/server.ts
+@@ -49,6 +49,8 @@ import * as thumbnailMaintenanceRouteModule from './routes/thumbnailMaintenanceR
+ import * as databaseMaintenanceRouteModule from './routes/databaseMaintenanceRoutes'
+ import * as rankingRouteModule from './routes/rankingRoutes'
+ import * as mediaTagRouteModule from './routes/mediaTagRoutes'
++import * as archiveIntegrityRouteModule from './routes/archiveIntegrityRoutes'
++import * as smartPlaylistRouteModule from './routes/smartPlaylistRoutes'
+ import * as systemInfoRouteModule from './routes/systemInfoRoutes'
+ import * as catalogRouteModule from './routes/catalogRoutes'
+ import * as galleryRouteModule from './routes/GalleryRoutes'
+@@ -319,6 +321,20 @@ const mediaTagRoutes =
+   )
+ 
+ 
++const archiveIntegrityRoutes =
++  resolveRouter(
++    archiveIntegrityRouteModule,
++    'archiveIntegrityRoutes'
++  )
++
++
++const smartPlaylistRoutes =
++  resolveRouter(
++    smartPlaylistRouteModule,
++    'smartPlaylistRoutes'
++  )
++
++
+ /*
+  * ========================================
+  * GLOBAL MIDDLEWARE
+@@ -362,6 +378,18 @@ app.use(
+ )
+ 
+ 
++app.use(
++  '/api/archive-integrity',
++  archiveIntegrityRoutes
++)
++
++
++app.use(
++  '/api/smart-playlists',
++  smartPlaylistRoutes
++)
++
++
+ app.use(
+   '/api/backup',
+   backupRoutes
+diff --git a/backend/src/services/archiveCategories.ts b/backend/src/services/archiveCategories.ts
+new file mode 100644
+index 0000000..b8dd383
+--- /dev/null
++++ b/backend/src/services/archiveCategories.ts
+@@ -0,0 +1,210 @@
++export type ArchiveCategoryDefinition = {
++  key: string
++  label: string
++  stateCategory: string
++  scanMode: 'category' | 'main-story' | 'gallery'
++  libraryCategories: string[]
++  catalogCategories: string[]
++  apiEndpoint: string
++  playerPath: string | null
++  completeness: boolean
++  playable: boolean
++}
++
++
++export const archiveCategoryDefinitions:
++  ArchiveCategoryDefinition[] = [
++  {
++    key: 'memoria',
++    label: 'Memoria',
++    stateCategory: 'Memoria',
++    scanMode: 'category',
++    libraryCategories: ['Memoria'],
++    catalogCategories: ['Memoria'],
++    apiEndpoint: '/api/library/memoria',
++    playerPath: '/memoria/watch',
++    completeness: true,
++    playable: true,
++  },
++  {
++    key: 'secret-times',
++    label: 'Secret Times',
++    stateCategory: 'Secret Times',
++    scanMode: 'category',
++    libraryCategories: ['Secret Times'],
++    catalogCategories: ['Secret Times'],
++    apiEndpoint: '/api/library/secret-times',
++    playerPath: '/secret-times/watch',
++    completeness: true,
++    playable: true,
++  },
++  {
++    key: 'tender-moments',
++    label: 'Tender Moments',
++    stateCategory: 'Tender Moments',
++    scanMode: 'category',
++    libraryCategories: ['Tender Moments'],
++    catalogCategories: ['Tender Moments'],
++    apiEndpoint: '/api/library/tender-moments',
++    playerPath: '/tender-moments/watch',
++    completeness: true,
++    playable: true,
++  },
++  {
++    key: 'myths',
++    label: 'Myths',
++    stateCategory: 'Myths',
++    scanMode: 'category',
++    libraryCategories: ['Myths'],
++    catalogCategories: ['Myths'],
++    apiEndpoint: '/api/library/myths',
++    playerPath: '/myths/watch',
++    completeness: true,
++    playable: true,
++  },
++  {
++    key: 'bond',
++    label: 'Bond',
++    stateCategory: 'Bond',
++    scanMode: 'category',
++    libraryCategories: ['Bond'],
++    catalogCategories: ['Bond'],
++    apiEndpoint: '/api/library/bond',
++    playerPath: '/bond/watch',
++    completeness: true,
++    playable: true,
++  },
++  {
++    key: 'phone-call',
++    label: 'Phone Calls',
++    stateCategory: 'Phone Call',
++    scanMode: 'category',
++    libraryCategories: ['Phone Call'],
++    catalogCategories: ['Phone Call'],
++    apiEndpoint: '/api/library/phone-calls',
++    playerPath: '/phone/watch',
++    completeness: true,
++    playable: true,
++  },
++  {
++    key: 'phone-video',
++    label: 'Phone Videos',
++    stateCategory: 'Phone Video',
++    scanMode: 'category',
++    libraryCategories: ['Phone Video'],
++    catalogCategories: ['Phone Video'],
++    apiEndpoint: '/api/library/phone-videos',
++    playerPath: '/phone/watch',
++    completeness: true,
++    playable: true,
++  },
++  {
++    key: 'illusio',
++    label: 'Illusio',
++    stateCategory: 'Illusio',
++    scanMode: 'category',
++    libraryCategories: ['Illusio Kindle'],
++    catalogCategories: ['Illusio', 'Illusio Kindle'],
++    apiEndpoint: '/api/library/illusio',
++    playerPath: '/illusio/watch',
++    completeness: true,
++    playable: true,
++  },
++  {
++    key: 'main-story',
++    label: 'Main Story',
++    stateCategory: 'Main Story',
++    scanMode: 'main-story',
++    libraryCategories: ['Main Story'],
++    catalogCategories: ['Main Story'],
++    apiEndpoint: '/api/library/main-story/sequence',
++    playerPath: '/main-story/watch',
++    completeness: false,
++    playable: true,
++  },
++  {
++    key: 'gallery',
++    label: 'Gallery',
++    stateCategory: 'Gallery',
++    scanMode: 'gallery',
++    libraryCategories: ['Gallery'],
++    catalogCategories: [],
++    apiEndpoint: '/api/gallery',
++    playerPath: null,
++    completeness: false,
++    playable: false,
++  },
++]
++
++
++function normalized(
++  value: string
++) {
++  return value
++    .trim()
++    .toLocaleLowerCase()
++}
++
++
++export const categoryScanDefinitions =
++  archiveCategoryDefinitions.filter(
++    (definition) =>
++      definition.scanMode === 'category'
++  )
++
++
++export const completenessCategoryDefinitions =
++  archiveCategoryDefinitions.filter(
++    (definition) =>
++      definition.completeness
++  )
++
++
++export const playableCategoryDefinitions =
++  archiveCategoryDefinitions.filter(
++    (definition) =>
++      definition.playable
++  )
++
++
++export function archiveCategoryByCatalogCategory(
++  category: string
++) {
++  const wanted = normalized(category)
++
++  return archiveCategoryDefinitions.find(
++    (definition) =>
++      definition.catalogCategories.some(
++        (candidate) =>
++          normalized(candidate) === wanted
++      )
++  ) ?? null
++}
++
++
++export function archiveCategoryByLibraryCategory(
++  category: string
++) {
++  const wanted = normalized(category)
++
++  return archiveCategoryDefinitions.find(
++    (definition) =>
++      definition.libraryCategories.some(
++        (candidate) =>
++          normalized(candidate) === wanted
++      ) ||
++      normalized(definition.stateCategory) === wanted
++  ) ?? null
++}
++
++
++export function canonicalArchiveCategory(
++  category: string
++) {
++  return (
++    archiveCategoryByLibraryCategory(
++      category
++    )?.stateCategory ??
++    category.trim()
++  )
++}
+diff --git a/backend/src/services/archiveCompleteness.ts b/backend/src/services/archiveCompleteness.ts
+index dd25642..1a30368 100644
+--- a/backend/src/services/archiveCompleteness.ts
++++ b/backend/src/services/archiveCompleteness.ts
+@@ -22,70 +22,11 @@ import {
+ } from './characterRegistry'
+ 
+ 
+-type CompletenessCategoryDefinition = {
+-  key: string
+-  label: string
+-  catalogCategories: string[]
+-  libraryCategories: string[]
+-}
+-
+-
+-const categoryDefinitions:
+-  CompletenessCategoryDefinition[] = [
+-    {
+-      key: 'memoria',
+-      label: 'Memoria',
+-      catalogCategories: ['Memoria'],
+-      libraryCategories: ['Memoria'],
+-    },
+-    {
+-      key: 'secret-times',
+-      label: 'Secret Times',
+-      catalogCategories: ['Secret Times'],
+-      libraryCategories: ['Secret Times'],
+-    },
+-    {
+-      key: 'tender-moments',
+-      label: 'Tender Moments',
+-      catalogCategories: ['Tender Moments'],
+-      libraryCategories: ['Tender Moments'],
+-    },
+-    {
+-      key: 'myths',
+-      label: 'Myths',
+-      catalogCategories: ['Myths'],
+-      libraryCategories: ['Myths'],
+-    },
+-    {
+-      key: 'bond',
+-      label: 'Bond',
+-      catalogCategories: ['Bond'],
+-      libraryCategories: ['Bond'],
+-    },
+-    {
+-      key: 'phone-call',
+-      label: 'Phone Calls',
+-      catalogCategories: ['Phone Call'],
+-      libraryCategories: ['Phone Call'],
+-    },
+-    {
+-      key: 'phone-video',
+-      label: 'Phone Videos',
+-      catalogCategories: ['Phone Video'],
+-      libraryCategories: ['Phone Video'],
+-    },
+-    {
+-      key: 'illusio',
+-      label: 'Illusio',
+-      catalogCategories: [
+-        'Illusio',
+-        'Illusio Kindle',
+-      ],
+-      libraryCategories: [
+-        'Illusio Kindle',
+-      ],
+-    },
+-  ]
++import {
++  archiveCategoryByCatalogCategory,
++  archiveCategoryByLibraryCategory,
++  completenessCategoryDefinitions,
++} from './archiveCategories'
+ 
+ 
+ type CoverageAccumulator = {
+@@ -131,39 +72,6 @@ function normalizeText(
+ }
+ 
+ 
+-const catalogCategoryLookup =
+-  new Map<string, CompletenessCategoryDefinition>()
+-
+-const libraryCategoryLookup =
+-  new Map<string, CompletenessCategoryDefinition>()
+-
+-
+-for (
+-  const definition
+-  of categoryDefinitions
+-) {
+-  for (
+-    const category
+-    of definition.catalogCategories
+-  ) {
+-    catalogCategoryLookup.set(
+-      normalizeText(category),
+-      definition
+-    )
+-  }
+-
+-  for (
+-    const category
+-    of definition.libraryCategories
+-  ) {
+-    libraryCategoryLookup.set(
+-      normalizeText(category),
+-      definition
+-    )
+-  }
+-}
+-
+-
+ function emptyCoverage(): CoverageAccumulator {
+   return {
+     expected: 0,
+@@ -252,18 +160,18 @@ function displayCatalogTitle(
+ function getCatalogDefinition(
+   category: string
+ ) {
+-  return catalogCategoryLookup.get(
+-    normalizeText(category)
+-  ) ?? null
++  return archiveCategoryByCatalogCategory(
++    category
++  )
+ }
+ 
+ 
+ function getLibraryDefinition(
+   category: string
+ ) {
+-  return libraryCategoryLookup.get(
+-    normalizeText(category)
+-  ) ?? null
++  return archiveCategoryByLibraryCategory(
++    category
++  )
+ }
+ 
+ 
+@@ -378,7 +286,7 @@ async function scanLocalItems(
+ 
+   for (
+     const definition
+-    of categoryDefinitions
++    of completenessCategoryDefinitions
+   ) {
+     for (
+       const category
+@@ -728,7 +636,7 @@ export async function buildArchiveCompleteness(
+ 
+ 
+   const categories =
+-    categoryDefinitions.map(
++    completenessCategoryDefinitions.map(
+       (definition) => ({
+         key:
+           definition.key,
+@@ -778,12 +686,12 @@ export async function buildArchiveCompleteness(
+       }
+ 
+       const categoryDifference =
+-        categoryDefinitions.findIndex(
++        completenessCategoryDefinitions.findIndex(
+           (definition) =>
+             definition.key ===
+             left.categoryKey
+         ) -
+-        categoryDefinitions.findIndex(
++        completenessCategoryDefinitions.findIndex(
+           (definition) =>
+             definition.key ===
+             right.categoryKey
+diff --git a/backend/src/services/archiveFileInventory.ts b/backend/src/services/archiveFileInventory.ts
+new file mode 100644
+index 0000000..f87c927
+--- /dev/null
++++ b/backend/src/services/archiveFileInventory.ts
+@@ -0,0 +1,238 @@
++import fs from 'node:fs/promises'
++import path from 'node:path'
++
++import {
++  isIgnoredArchiveDirectory,
++} from './archiveDirectoryRules'
++
++
++const videoExtensions =
++  new Set([
++    '.mp4',
++    '.mkv',
++    '.webm',
++    '.mov',
++    '.avi',
++  ])
++
++const audioExtensions =
++  new Set([
++    '.mp3',
++    '.m4a',
++    '.aac',
++    '.wav',
++    '.flac',
++    '.ogg',
++  ])
++
++const imageExtensions =
++  new Set([
++    '.jpg',
++    '.jpeg',
++    '.png',
++    '.webp',
++    '.gif',
++    '.avif',
++  ])
++
++
++export type ArchiveInventoryFile = {
++  filePath: string
++  relativePath: string
++  fileName: string
++  sizeBytes: number
++  mtimeMs: number
++  mediaType:
++    | 'video'
++    | 'audio'
++    | 'image'
++}
++
++
++function normalizeRelativePath(
++  value: string
++) {
++  return value
++    .split(path.sep)
++    .join('/')
++}
++
++
++function mediaTypeFor(
++  fileName: string
++): ArchiveInventoryFile['mediaType'] | null {
++  const extension =
++    path.extname(
++      fileName
++    ).toLocaleLowerCase()
++
++  if (
++    videoExtensions.has(
++      extension
++    )
++  ) {
++    return 'video'
++  }
++
++  if (
++    audioExtensions.has(
++      extension
++    )
++  ) {
++    return 'audio'
++  }
++
++  if (
++    imageExtensions.has(
++      extension
++    )
++  ) {
++    return 'image'
++  }
++
++  return null
++}
++
++
++function ignoredMediaFile(
++  fileName: string
++) {
++  const lower =
++    fileName.toLocaleLowerCase()
++
++  return (
++    lower.endsWith(
++      '.thumbnail.jpg'
++    ) ||
++    lower.endsWith(
++      '.thumbnail.jpeg'
++    ) ||
++    lower.endsWith(
++      '.thumbnail.png'
++    ) ||
++    lower.endsWith(
++      '.thumbnail.webp'
++    )
++  )
++}
++
++
++async function walk(
++  directory: string,
++  libraryRoot: string,
++  results: ArchiveInventoryFile[]
++) {
++  const entries =
++    await fs.readdir(
++      directory,
++      {
++        withFileTypes: true,
++      }
++    )
++
++  for (
++    const entry
++    of entries
++  ) {
++    const filePath =
++      path.join(
++        directory,
++        entry.name
++      )
++
++    if (
++      entry.isDirectory()
++    ) {
++      if (
++        isIgnoredArchiveDirectory(
++          entry.name
++        )
++      ) {
++        continue
++      }
++
++      await walk(
++        filePath,
++        libraryRoot,
++        results
++      )
++      continue
++    }
++
++    if (
++      !entry.isFile() ||
++      ignoredMediaFile(
++        entry.name
++      )
++    ) {
++      continue
++    }
++
++    const mediaType =
++      mediaTypeFor(
++        entry.name
++      )
++
++    if (!mediaType) {
++      continue
++    }
++
++    const stat =
++      await fs.stat(
++        filePath
++      )
++
++    results.push({
++      filePath,
++      relativePath:
++        normalizeRelativePath(
++          path.relative(
++            libraryRoot,
++            filePath
++          )
++        ),
++      fileName:
++        entry.name,
++      sizeBytes:
++        stat.size,
++      mtimeMs:
++        stat.mtimeMs,
++      mediaType,
++    })
++  }
++}
++
++
++export async function collectArchiveMediaFiles(
++  libraryRoot: string
++) {
++  const results:
++    ArchiveInventoryFile[] = []
++
++  await walk(
++    path.resolve(
++      libraryRoot
++    ),
++    path.resolve(
++      libraryRoot
++    ),
++    results
++  )
++
++  results.sort(
++    (
++      left,
++      right
++    ) =>
++      left.relativePath.localeCompare(
++        right.relativePath,
++        undefined,
++        {
++          numeric: true,
++          sensitivity: 'base',
++        }
++      )
++  )
++
++  return results
++}
+diff --git a/backend/src/services/databaseMigrations.ts b/backend/src/services/databaseMigrations.ts
+index 0344cad..567b4d5 100644
+--- a/backend/src/services/databaseMigrations.ts
++++ b/backend/src/services/databaseMigrations.ts
+@@ -13,7 +13,7 @@ import {
+ 
+ 
+ export const applicationDatabaseSchemaVersion =
+-  4
++  6
+ 
+ 
+ export const catalogDatabaseSchemaVersion =
+@@ -619,6 +619,95 @@ function applicationMigrationV4(
+ }
+ 
+ 
++function applicationMigrationV5(
++  database: DatabaseSync
++) {
++
++  database.exec(`
++    PRAGMA foreign_keys = ON;
++    BEGIN IMMEDIATE;
++
++    CREATE TABLE IF NOT EXISTS archive_integrity_run (
++      id INTEGER PRIMARY KEY AUTOINCREMENT,
++      scan_token TEXT NOT NULL UNIQUE,
++      mode TEXT NOT NULL,
++      started_at TEXT NOT NULL,
++      completed_at TEXT,
++      file_count INTEGER NOT NULL DEFAULT 0,
++      error TEXT
++    );
++
++    CREATE TABLE IF NOT EXISTS archive_file_manifest (
++      relative_path TEXT PRIMARY KEY,
++      media_type TEXT NOT NULL,
++      first_seen_at TEXT NOT NULL,
++      last_seen_at TEXT NOT NULL,
++      last_seen_scan TEXT,
++      pending_scan TEXT,
++      size_bytes INTEGER NOT NULL,
++      mtime_ms REAL NOT NULL,
++      sha256 TEXT,
++      observed_size_bytes INTEGER NOT NULL,
++      observed_mtime_ms REAL NOT NULL,
++      observed_sha256 TEXT,
++      verified_at TEXT,
++      accepted_at TEXT
++    );
++
++    CREATE INDEX IF NOT EXISTS
++      idx_archive_file_manifest_seen
++    ON archive_file_manifest(
++      last_seen_scan
++    );
++
++    CREATE INDEX IF NOT EXISTS
++      idx_archive_file_manifest_hash
++    ON archive_file_manifest(
++      sha256
++    );
++
++    CREATE INDEX IF NOT EXISTS
++      idx_archive_file_manifest_observed_hash
++    ON archive_file_manifest(
++      observed_sha256
++    );
++
++    PRAGMA user_version = 5;
++    COMMIT;
++  `)
++
++}
++
++
++function applicationMigrationV6(
++  database: DatabaseSync
++) {
++
++  database.exec(`
++    PRAGMA foreign_keys = ON;
++    BEGIN IMMEDIATE;
++
++    CREATE TABLE IF NOT EXISTS smart_playlist (
++      id INTEGER PRIMARY KEY AUTOINCREMENT,
++      name TEXT NOT NULL,
++      rules_json TEXT NOT NULL,
++      created_at TEXT NOT NULL,
++      updated_at TEXT NOT NULL
++    );
++
++    CREATE INDEX IF NOT EXISTS
++      idx_smart_playlist_updated
++    ON smart_playlist(
++      updated_at DESC
++    );
++
++    PRAGMA user_version = 6;
++    COMMIT;
++  `)
++
++}
++
++
+ function getTableSql(
+   database: DatabaseSync,
+   tableName: string
+@@ -1098,6 +1187,28 @@ const applicationMigrations:
+       applicationMigrationV4,
+   },
+ 
++  {
++    version:
++      5,
++
++    name:
++      'Add archive integrity manifest',
++
++    run:
++      applicationMigrationV5,
++  },
++
++  {
++    version:
++      6,
++
++    name:
++      'Add smart playlists',
++
++    run:
++      applicationMigrationV6,
++  },
++
+ ]
+ 
+ 
+diff --git a/backend/src/state/archiveIntegrity.ts b/backend/src/state/archiveIntegrity.ts
+new file mode 100644
+index 0000000..1f0a837
+--- /dev/null
++++ b/backend/src/state/archiveIntegrity.ts
+@@ -0,0 +1,732 @@
++import {
++  randomUUID,
++} from 'node:crypto'
++
++import {
++  DatabaseSync,
++} from 'node:sqlite'
++
++import {
++  applicationDatabasePath,
++  ensureApplicationDatabaseMigrations,
++} from '../services/databaseMigrations'
++
++import type {
++  ArchiveInventoryFile,
++} from '../services/archiveFileInventory'
++
++
++ensureApplicationDatabaseMigrations()
++
++
++const database =
++  new DatabaseSync(
++    applicationDatabasePath
++  )
++
++
++database.exec(
++  'PRAGMA foreign_keys = ON;'
++)
++
++
++export type IntegrityMode =
++  | 'quick'
++  | 'verify'
++
++
++type ManifestRow = {
++  relative_path: string
++  media_type: string
++  first_seen_at: string
++  last_seen_at: string
++  last_seen_scan: string | null
++  pending_scan: string | null
++  size_bytes: number
++  mtime_ms: number
++  sha256: string | null
++  observed_size_bytes: number
++  observed_mtime_ms: number
++  observed_sha256: string | null
++  verified_at: string | null
++  accepted_at: string | null
++}
++
++
++type RunRow = {
++  id: number
++  scan_token: string
++  mode: string
++  started_at: string
++  completed_at: string | null
++  file_count: number
++  error: string | null
++}
++
++
++function runFromRow(
++  row: RunRow | undefined
++) {
++  if (!row) {
++    return null
++  }
++
++  return {
++    id: row.id,
++    scanToken:
++      row.scan_token,
++    mode:
++      row.mode as IntegrityMode,
++    startedAt:
++      row.started_at,
++    completedAt:
++      row.completed_at,
++    fileCount:
++      Number(row.file_count),
++    error:
++      row.error,
++  }
++}
++
++
++export function beginIntegrityRun(
++  mode: IntegrityMode
++) {
++  const scanToken =
++    randomUUID()
++
++  const startedAt =
++    new Date().toISOString()
++
++  const result =
++    database
++      .prepare(`
++        INSERT INTO archive_integrity_run (
++          scan_token,
++          mode,
++          started_at,
++          file_count
++        )
++        VALUES (?, ?, ?, 0)
++      `)
++      .run(
++        scanToken,
++        mode,
++        startedAt
++      )
++
++  return {
++    id:
++      Number(
++        result.lastInsertRowid
++      ),
++    scanToken,
++    mode,
++    startedAt,
++  }
++}
++
++
++export function observeIntegrityFile(
++  file: ArchiveInventoryFile,
++  scanToken: string
++) {
++  const now =
++    new Date().toISOString()
++
++  database
++    .prepare(`
++      INSERT INTO archive_file_manifest (
++        relative_path,
++        media_type,
++        first_seen_at,
++        last_seen_at,
++        pending_scan,
++        size_bytes,
++        mtime_ms,
++        observed_size_bytes,
++        observed_mtime_ms
++      )
++      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
++      ON CONFLICT(relative_path)
++      DO UPDATE SET
++        media_type = excluded.media_type,
++        last_seen_at = excluded.last_seen_at,
++        pending_scan = excluded.pending_scan,
++        observed_size_bytes = excluded.observed_size_bytes,
++        observed_mtime_ms = excluded.observed_mtime_ms,
++        observed_sha256 = NULL
++    `)
++    .run(
++      file.relativePath,
++      file.mediaType,
++      now,
++      now,
++      scanToken,
++      file.sizeBytes,
++      file.mtimeMs,
++      file.sizeBytes,
++      file.mtimeMs
++    )
++}
++
++
++export function verifyIntegrityFile(
++  file: ArchiveInventoryFile,
++  sha256: string,
++  scanToken: string
++) {
++  const now =
++    new Date().toISOString()
++
++  const existing =
++    database
++      .prepare(`
++        SELECT *
++        FROM archive_file_manifest
++        WHERE relative_path = ?
++      `)
++      .get(
++        file.relativePath
++      ) as ManifestRow | undefined
++
++
++  if (!existing) {
++    database
++      .prepare(`
++        INSERT INTO archive_file_manifest (
++          relative_path,
++          media_type,
++          first_seen_at,
++          last_seen_at,
++          pending_scan,
++          size_bytes,
++          mtime_ms,
++          sha256,
++          observed_size_bytes,
++          observed_mtime_ms,
++          observed_sha256,
++          verified_at,
++          accepted_at
++        )
++        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
++      `)
++      .run(
++        file.relativePath,
++        file.mediaType,
++        now,
++        now,
++        scanToken,
++        file.sizeBytes,
++        file.mtimeMs,
++        sha256,
++        file.sizeBytes,
++        file.mtimeMs,
++        sha256,
++        now,
++        now
++      )
++    return
++  }
++
++
++  if (
++    !existing.sha256 ||
++    existing.sha256 === sha256
++  ) {
++    database
++      .prepare(`
++        UPDATE archive_file_manifest
++        SET
++          media_type = ?,
++          last_seen_at = ?,
++          pending_scan = ?,
++          size_bytes = ?,
++          mtime_ms = ?,
++          sha256 = ?,
++          observed_size_bytes = ?,
++          observed_mtime_ms = ?,
++          observed_sha256 = ?,
++          verified_at = ?,
++          accepted_at =
++            COALESCE(
++              accepted_at,
++              ?
++            )
++        WHERE relative_path = ?
++      `)
++      .run(
++        file.mediaType,
++        now,
++        scanToken,
++        file.sizeBytes,
++        file.mtimeMs,
++        sha256,
++        file.sizeBytes,
++        file.mtimeMs,
++        sha256,
++        now,
++        now,
++        file.relativePath
++      )
++    return
++  }
++
++
++  database
++    .prepare(`
++      UPDATE archive_file_manifest
++      SET
++        media_type = ?,
++        last_seen_at = ?,
++        pending_scan = ?,
++        observed_size_bytes = ?,
++        observed_mtime_ms = ?,
++        observed_sha256 = ?,
++        verified_at = ?
++      WHERE relative_path = ?
++    `)
++    .run(
++      file.mediaType,
++      now,
++      scanToken,
++      file.sizeBytes,
++      file.mtimeMs,
++      sha256,
++      now,
++      file.relativePath
++    )
++}
++
++
++export function finishIntegrityRun(
++  runId: number,
++  scanToken: string,
++  fileCount: number
++) {
++  const completedAt =
++    new Date().toISOString()
++
++  database.exec(
++    'BEGIN IMMEDIATE'
++  )
++
++  try {
++    database
++      .prepare(`
++        UPDATE archive_file_manifest
++        SET
++          last_seen_scan = ?,
++          pending_scan = NULL
++        WHERE pending_scan = ?
++      `)
++      .run(
++        scanToken,
++        scanToken
++      )
++
++    database
++      .prepare(`
++        UPDATE archive_integrity_run
++        SET
++          completed_at = ?,
++          file_count = ?,
++          error = NULL
++        WHERE id = ?
++      `)
++      .run(
++        completedAt,
++        fileCount,
++        runId
++      )
++
++    database.exec(
++      'COMMIT'
++    )
++  } catch (error) {
++    database.exec(
++      'ROLLBACK'
++    )
++    throw error
++  }
++}
++
++
++export function failIntegrityRun(
++  runId: number,
++  scanToken: string,
++  errorMessage: string
++) {
++  database
++    .prepare(`
++      UPDATE archive_file_manifest
++      SET pending_scan = NULL
++      WHERE pending_scan = ?
++    `)
++    .run(
++      scanToken
++    )
++
++  database
++    .prepare(`
++      UPDATE archive_integrity_run
++      SET error = ?
++      WHERE id = ?
++    `)
++    .run(
++      errorMessage,
++      runId
++    )
++}
++
++
++function latestCompletedRun() {
++  const row =
++    database
++      .prepare(`
++        SELECT *
++        FROM archive_integrity_run
++        WHERE completed_at IS NOT NULL
++        ORDER BY id DESC
++        LIMIT 1
++      `)
++      .get() as RunRow | undefined
++
++  return runFromRow(
++    row
++  )
++}
++
++
++function latestRun() {
++  const row =
++    database
++      .prepare(`
++        SELECT *
++        FROM archive_integrity_run
++        ORDER BY id DESC
++        LIMIT 1
++      `)
++      .get() as RunRow | undefined
++
++  return runFromRow(
++    row
++  )
++}
++
++
++function rowStatus(
++  row: ManifestRow,
++  scanToken: string | null
++) {
++  if (
++    !scanToken ||
++    row.last_seen_scan !== scanToken
++  ) {
++    return 'missing' as const
++  }
++
++  if (
++    row.sha256 &&
++    row.observed_sha256 &&
++    row.sha256 !==
++      row.observed_sha256
++  ) {
++    return 'hash-changed' as const
++  }
++
++  if (!row.sha256) {
++    return 'unverified' as const
++  }
++
++  if (
++    Number(row.size_bytes) !==
++      Number(row.observed_size_bytes) ||
++    Math.round(
++      Number(row.mtime_ms)
++    ) !==
++      Math.round(
++        Number(row.observed_mtime_ms)
++      )
++  ) {
++    return 'modified' as const
++  }
++
++  return 'verified' as const
++}
++
++
++export function getArchiveIntegrityReport() {
++  const completedRun =
++    latestCompletedRun()
++
++  const rows =
++    database
++      .prepare(`
++        SELECT *
++        FROM archive_file_manifest
++        ORDER BY relative_path COLLATE NOCASE ASC
++      `)
++      .all() as ManifestRow[]
++
++  const scanToken =
++    completedRun?.scanToken ??
++    null
++
++  const items =
++    rows.map(
++      (row) => ({
++        relativePath:
++          row.relative_path,
++        mediaType:
++          row.media_type,
++        status:
++          rowStatus(
++            row,
++            scanToken
++          ),
++        sizeBytes:
++          Number(
++            row.observed_size_bytes
++          ),
++        baselineSizeBytes:
++          Number(
++            row.size_bytes
++          ),
++        mtimeMs:
++          Number(
++            row.observed_mtime_ms
++          ),
++        baselineMtimeMs:
++          Number(
++            row.mtime_ms
++          ),
++        sha256:
++          row.sha256,
++        observedSha256:
++          row.observed_sha256,
++        verifiedAt:
++          row.verified_at,
++        firstSeenAt:
++          row.first_seen_at,
++        lastSeenAt:
++          row.last_seen_at,
++      })
++    )
++
++  const currentItems =
++    items.filter(
++      (item) =>
++        item.status !==
++          'missing'
++    )
++
++  const hashGroups =
++    new Map<
++      string,
++      typeof items
++    >()
++
++  for (
++    const item
++    of currentItems
++  ) {
++    const effectiveHash =
++      item.observedSha256 ??
++      (
++        item.status === 'verified'
++          ? item.sha256
++          : null
++      )
++
++    if (!effectiveHash) {
++      continue
++    }
++
++    const group =
++      hashGroups.get(
++        effectiveHash
++      ) ?? []
++
++    group.push(item)
++    hashGroups.set(
++      effectiveHash,
++      group
++    )
++  }
++
++  const duplicates =
++    [...hashGroups.entries()]
++      .filter(
++        ([, group]) =>
++          group.length > 1
++      )
++      .map(
++        ([sha256, group]) => ({
++          sha256,
++          count:
++            group.length,
++          sizeBytes:
++            group[0]?.sizeBytes ?? 0,
++          items:
++            group.map(
++              (item) =>
++                item.relativePath
++            ),
++        })
++      )
++      .sort(
++        (
++          left,
++          right
++        ) =>
++          right.count -
++            left.count ||
++          right.sizeBytes -
++            left.sizeBytes
++      )
++
++  const summary = {
++    tracked:
++      items.length,
++    current:
++      currentItems.length,
++    verified:
++      items.filter(
++        (item) =>
++          item.status === 'verified'
++      ).length,
++    unverified:
++      items.filter(
++        (item) =>
++          item.status === 'unverified'
++      ).length,
++    modified:
++      items.filter(
++        (item) =>
++          item.status === 'modified'
++      ).length,
++    hashChanged:
++      items.filter(
++        (item) =>
++          item.status === 'hash-changed'
++      ).length,
++    missing:
++      items.filter(
++        (item) =>
++          item.status === 'missing'
++      ).length,
++    duplicateGroups:
++      duplicates.length,
++    duplicateFiles:
++      duplicates.reduce(
++        (
++          total,
++          group
++        ) =>
++          total +
++          group.count,
++        0
++      ),
++  }
++
++  return {
++    latestCompletedRun:
++      completedRun,
++    latestRun:
++      latestRun(),
++    summary,
++    items,
++    duplicates,
++  }
++}
++
++
++export function acceptVerifiedIntegrityChanges(
++  relativePaths?: string[]
++) {
++  const completedRun =
++    latestCompletedRun()
++
++  if (!completedRun) {
++    return 0
++  }
++
++  const wanted =
++    relativePaths &&
++    relativePaths.length > 0
++      ? new Set(
++          relativePaths
++        )
++      : null
++
++  const rows =
++    database
++      .prepare(`
++        SELECT *
++        FROM archive_file_manifest
++        WHERE
++          last_seen_scan = ?
++          AND observed_sha256 IS NOT NULL
++          AND sha256 IS NOT NULL
++          AND observed_sha256 != sha256
++      `)
++      .all(
++        completedRun.scanToken
++      ) as ManifestRow[]
++
++  const now =
++    new Date().toISOString()
++
++  let updated = 0
++
++  const statement =
++    database.prepare(`
++      UPDATE archive_file_manifest
++      SET
++        size_bytes = observed_size_bytes,
++        mtime_ms = observed_mtime_ms,
++        sha256 = observed_sha256,
++        accepted_at = ?,
++        verified_at = ?
++      WHERE relative_path = ?
++    `)
++
++  database.exec(
++    'BEGIN IMMEDIATE'
++  )
++
++  try {
++    for (
++      const row
++      of rows
++    ) {
++      if (
++        wanted &&
++        !wanted.has(
++          row.relative_path
++        )
++      ) {
++        continue
++      }
++
++      statement.run(
++        now,
++        now,
++        row.relative_path
++      )
++      updated += 1
++    }
++
++    database.exec(
++      'COMMIT'
++    )
++  } catch (error) {
++    database.exec(
++      'ROLLBACK'
++    )
++    throw error
++  }
++
++  return updated
++}
+diff --git a/backend/src/state/mediaTags.ts b/backend/src/state/mediaTags.ts
+index 36d8224..bfde560 100644
+--- a/backend/src/state/mediaTags.ts
++++ b/backend/src/state/mediaTags.ts
+@@ -630,3 +630,337 @@ export function renameMediaTagPath(
+   }
+ 
+ }
++
++
++export function renameMediaTag(
++  currentName: string,
++  newName: string
++) {
++
++  const currentNormalized =
++    normalizeTagName(
++      currentName
++    )
++
++  const cleanedNewName =
++    cleanTagName(
++      newName
++    )
++
++
++  if (
++    !currentNormalized ||
++    !cleanedNewName
++  ) {
++
++    throw new Error(
++      'Both currentName and newName are required.'
++    )
++
++  }
++
++
++  const current =
++    database
++      .prepare(`
++        SELECT
++          id,
++          name,
++          normalized_name
++        FROM media_tag
++        WHERE
++          normalized_name = ?
++      `)
++      .get(
++        currentNormalized
++      ) as MediaTagRow | undefined
++
++
++  if (!current) {
++    throw new Error(
++      'Tag was not found.'
++    )
++  }
++
++
++  const targetNormalized =
++    normalizeTagName(
++      cleanedNewName
++    )
++
++
++  if (
++    targetNormalized ===
++    current.normalized_name
++  ) {
++
++    database
++      .prepare(`
++        UPDATE media_tag
++        SET name = ?
++        WHERE id = ?
++      `)
++      .run(
++        cleanedNewName,
++        current.id
++      )
++
++
++    return {
++      name:
++        cleanedNewName,
++      merged:
++        false,
++    }
++
++  }
++
++
++  const target =
++    database
++      .prepare(`
++        SELECT
++          id,
++          name,
++          normalized_name
++        FROM media_tag
++        WHERE
++          normalized_name = ?
++      `)
++      .get(
++        targetNormalized
++      ) as MediaTagRow | undefined
++
++
++  database.exec(
++    'BEGIN IMMEDIATE'
++  )
++
++
++  try {
++
++    if (target) {
++
++      database
++        .prepare(`
++          INSERT OR IGNORE INTO media_tag_assignment (
++            tag_id,
++            category,
++            relative_path,
++            created_at
++          )
++          SELECT
++            ?,
++            category,
++            relative_path,
++            created_at
++          FROM media_tag_assignment
++          WHERE tag_id = ?
++        `)
++        .run(
++          target.id,
++          current.id
++        )
++
++
++      database
++        .prepare(`
++          DELETE FROM media_tag
++          WHERE id = ?
++        `)
++        .run(
++          current.id
++        )
++
++    } else {
++
++      database
++        .prepare(`
++          UPDATE media_tag
++          SET
++            name = ?,
++            normalized_name = ?
++          WHERE id = ?
++        `)
++        .run(
++          cleanedNewName,
++          targetNormalized,
++          current.id
++        )
++
++    }
++
++
++    database.exec(
++      'COMMIT'
++    )
++
++  } catch (error) {
++
++    database.exec(
++      'ROLLBACK'
++    )
++
++    throw error
++
++  }
++
++
++  return {
++    name:
++      target?.name ??
++      cleanedNewName,
++    merged:
++      Boolean(target),
++  }
++
++}
++
++
++export function deleteMediaTag(
++  name: string
++) {
++
++  const normalized =
++    normalizeTagName(
++      name
++    )
++
++
++  if (!normalized) {
++    return 0
++  }
++
++
++  const result =
++    database
++      .prepare(`
++        DELETE FROM media_tag
++        WHERE normalized_name = ?
++      `)
++      .run(
++        normalized
++      )
++
++
++  return Number(
++    result.changes
++  )
++
++}
++
++
++export function bulkUpdateMediaTags(
++  items: Array<{
++    category: string
++    relativePath: string
++  }>,
++  addTags: string[],
++  removeTags: string[]
++) {
++
++  const addNormalized =
++    new Map(
++      cleanTagList(
++        addTags
++      ).map(
++        (tag) => [
++          normalizeTagName(tag),
++          tag,
++        ]
++      )
++    )
++
++  const removeNormalized =
++    new Set(
++      cleanTagList(
++        removeTags
++      ).map(
++        normalizeTagName
++      )
++    )
++
++
++  let updated =
++    0
++
++
++  for (
++    const item
++    of items.slice(
++      0,
++      1000
++    )
++  ) {
++
++    const category =
++      item.category?.trim()
++
++    const relativePath =
++      item.relativePath?.trim()
++
++
++    if (
++      !category ||
++      !relativePath
++    ) {
++      continue
++    }
++
++
++    const current =
++      getMediaTags(
++        category,
++        relativePath
++      )
++
++    const next =
++      new Map(
++        current.map(
++          (tag) => [
++            normalizeTagName(tag),
++            tag,
++          ]
++        )
++      )
++
++
++    for (
++      const normalized
++      of removeNormalized
++    ) {
++      next.delete(
++        normalized
++      )
++    }
++
++
++    for (
++      const [
++        normalized,
++        tag,
++      ]
++      of addNormalized
++    ) {
++      next.set(
++        normalized,
++        tag
++      )
++    }
++
++
++    setMediaTags(
++      category,
++      relativePath,
++      [...next.values()]
++    )
++
++    updated +=
++      1
++
++  }
++
++
++  return updated
++
++}
+diff --git a/backend/src/state/smartPlaylists.ts b/backend/src/state/smartPlaylists.ts
+new file mode 100644
+index 0000000..407c9b3
+--- /dev/null
++++ b/backend/src/state/smartPlaylists.ts
+@@ -0,0 +1,362 @@
++import {
++  DatabaseSync,
++} from 'node:sqlite'
++
++import {
++  applicationDatabasePath,
++  ensureApplicationDatabaseMigrations,
++} from '../services/databaseMigrations'
++
++
++ensureApplicationDatabaseMigrations()
++
++
++const database =
++  new DatabaseSync(
++    applicationDatabasePath
++  )
++
++
++export type SmartPlaylistStatus =
++  | 'any'
++  | 'unwatched'
++  | 'in-progress'
++  | 'completed'
++
++export type SmartPlaylistTagMode =
++  | 'any'
++  | 'all'
++
++export type SmartPlaylistRules = {
++  characters: string[]
++  categories: string[]
++  tags: string[]
++  tagMode: SmartPlaylistTagMode
++  favoriteOnly: boolean
++  status: SmartPlaylistStatus
++  minRating: number | null
++}
++
++export type SmartPlaylist = {
++  id: number
++  name: string
++  rules: SmartPlaylistRules
++  createdAt: string
++  updatedAt: string
++}
++
++
++type SmartPlaylistRow = {
++  id: number
++  name: string
++  rules_json: string
++  created_at: string
++  updated_at: string
++}
++
++
++export const defaultSmartPlaylistRules:
++  SmartPlaylistRules = {
++    characters: [],
++    categories: [],
++    tags: [],
++    tagMode: 'any',
++    favoriteOnly: false,
++    status: 'any',
++    minRating: null,
++  }
++
++
++function cleanList(
++  value: unknown
++) {
++  if (!Array.isArray(value)) {
++    return []
++  }
++
++  const unique =
++    new Map<string, string>()
++
++  for (
++    const candidate
++    of value
++  ) {
++    if (
++      typeof candidate !==
++      'string'
++    ) {
++      continue
++    }
++
++    const cleaned =
++      candidate
++        .trim()
++        .replace(
++          /\s+/g,
++          ' '
++        )
++
++    if (!cleaned) {
++      continue
++    }
++
++    const key =
++      cleaned.toLocaleLowerCase()
++
++    if (!unique.has(key)) {
++      unique.set(
++        key,
++        cleaned
++      )
++    }
++  }
++
++  return [...unique.values()]
++    .slice(0, 30)
++}
++
++
++export function normalizeSmartPlaylistRules(
++  value: unknown
++): SmartPlaylistRules {
++  const source =
++    value &&
++    typeof value === 'object'
++      ? value as Record<string, unknown>
++      : {}
++
++  const tagMode:
++    SmartPlaylistTagMode =
++      source.tagMode === 'all'
++        ? 'all'
++        : 'any'
++
++  const status:
++    SmartPlaylistStatus =
++      source.status === 'unwatched' ||
++      source.status === 'in-progress' ||
++      source.status === 'completed'
++        ? source.status
++        : 'any'
++
++  const rawRating =
++    source.minRating
++
++  const minRating =
++    typeof rawRating === 'number' &&
++    Number.isFinite(rawRating) &&
++    rawRating >= 0.5 &&
++    rawRating <= 5
++      ? Math.round(
++          rawRating * 2
++        ) / 2
++      : null
++
++  return {
++    characters:
++      cleanList(
++        source.characters
++      ),
++    categories:
++      cleanList(
++        source.categories
++      ),
++    tags:
++      cleanList(
++        source.tags
++      ),
++    tagMode,
++    favoriteOnly:
++      source.favoriteOnly === true,
++    status,
++    minRating,
++  }
++}
++
++
++function fromRow(
++  row: SmartPlaylistRow
++): SmartPlaylist {
++  let rules:
++    SmartPlaylistRules =
++    defaultSmartPlaylistRules
++
++  try {
++    rules =
++      normalizeSmartPlaylistRules(
++        JSON.parse(
++          row.rules_json
++        )
++      )
++  } catch {
++    rules = {
++      ...defaultSmartPlaylistRules,
++    }
++  }
++
++  return {
++    id:
++      row.id,
++    name:
++      row.name,
++    rules,
++    createdAt:
++      row.created_at,
++    updatedAt:
++      row.updated_at,
++  }
++}
++
++
++export function listSmartPlaylists() {
++  const rows =
++    database
++      .prepare(`
++        SELECT *
++        FROM smart_playlist
++        ORDER BY
++          updated_at DESC,
++          name COLLATE NOCASE ASC
++      `)
++      .all() as SmartPlaylistRow[]
++
++  return rows.map(
++    fromRow
++  )
++}
++
++
++export function getSmartPlaylist(
++  id: number
++) {
++  const row =
++    database
++      .prepare(`
++        SELECT *
++        FROM smart_playlist
++        WHERE id = ?
++      `)
++      .get(
++        id
++      ) as SmartPlaylistRow | undefined
++
++  return row
++    ? fromRow(row)
++    : null
++}
++
++
++export function createSmartPlaylist(
++  name: string,
++  rules: unknown
++) {
++  const cleanedName =
++    name
++      .trim()
++      .slice(0, 120)
++
++  if (!cleanedName) {
++    throw new Error(
++      'Smart playlist name is required.'
++    )
++  }
++
++  const normalizedRules =
++    normalizeSmartPlaylistRules(
++      rules
++    )
++
++  const now =
++    new Date().toISOString()
++
++  const result =
++    database
++      .prepare(`
++        INSERT INTO smart_playlist (
++          name,
++          rules_json,
++          created_at,
++          updated_at
++        )
++        VALUES (?, ?, ?, ?)
++      `)
++      .run(
++        cleanedName,
++        JSON.stringify(
++          normalizedRules
++        ),
++        now,
++        now
++      )
++
++  return getSmartPlaylist(
++    Number(
++      result.lastInsertRowid
++    )
++  )
++}
++
++
++export function updateSmartPlaylist(
++  id: number,
++  name: string,
++  rules: unknown
++) {
++  const cleanedName =
++    name
++      .trim()
++      .slice(0, 120)
++
++  if (!cleanedName) {
++    throw new Error(
++      'Smart playlist name is required.'
++    )
++  }
++
++  const result =
++    database
++      .prepare(`
++        UPDATE smart_playlist
++        SET
++          name = ?,
++          rules_json = ?,
++          updated_at = ?
++        WHERE id = ?
++      `)
++      .run(
++        cleanedName,
++        JSON.stringify(
++          normalizeSmartPlaylistRules(
++            rules
++          )
++        ),
++        new Date().toISOString(),
++        id
++      )
++
++  if (
++    Number(result.changes) ===
++    0
++  ) {
++    return null
++  }
++
++  return getSmartPlaylist(id)
++}
++
++
++export function deleteSmartPlaylist(
++  id: number
++) {
++  const result =
++    database
++      .prepare(`
++        DELETE FROM smart_playlist
++        WHERE id = ?
++      `)
++      .run(id)
++
++  return Number(
++    result.changes
++  )
++}
+diff --git a/frontend/src/App.css b/frontend/src/App.css
+index 2bfc1df..b81d319 100644
+--- a/frontend/src/App.css
++++ b/frontend/src/App.css
+@@ -31705,3 +31705,813 @@ html[data-dsa-mobile="true"] .player-audio-only-icon {
+     font-size: 0.64rem;
+   }
+ }
++
++/* ========================================
++   TAG MANAGER
++======================================== */
++
++.tag-manager-page {
++  padding-bottom: 80px;
++}
++
++.tag-manager-summary {
++  display: grid;
++  grid-template-columns: repeat(3, minmax(0, 1fr));
++  gap: 14px;
++  margin: 22px 0;
++}
++
++.tag-manager-summary > div,
++.tag-manager-panel {
++  border: 1px solid rgba(255, 255, 255, 0.1);
++  border-radius: 18px;
++  background: rgba(14, 18, 34, 0.72);
++  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.18);
++}
++
++.tag-manager-summary > div {
++  display: flex;
++  flex-direction: column;
++  gap: 5px;
++  padding: 18px;
++}
++
++.tag-manager-summary strong {
++  font-size: 1.55rem;
++}
++
++.tag-manager-summary span,
++.tag-manager-tag-row span,
++.tag-manager-media-row span {
++  color: rgba(224, 228, 244, 0.66);
++  font-size: 0.78rem;
++}
++
++.tag-manager-panel {
++  margin-top: 20px;
++  padding: 22px;
++}
++
++.tag-manager-panel-heading {
++  display: flex;
++  align-items: flex-start;
++  justify-content: space-between;
++  gap: 18px;
++  margin-bottom: 18px;
++}
++
++.tag-manager-panel-heading h2 {
++  margin: 4px 0 6px;
++}
++
++.tag-manager-panel-heading p {
++  margin: 0;
++  color: rgba(224, 228, 244, 0.7);
++}
++
++.tag-manager-tag-list,
++.tag-manager-media-list {
++  display: grid;
++  gap: 8px;
++}
++
++.tag-manager-tag-row {
++  display: grid;
++  grid-template-columns: minmax(140px, 1fr) auto auto auto;
++  align-items: center;
++  gap: 10px;
++  padding: 10px 12px;
++  border-radius: 12px;
++  background: rgba(255, 255, 255, 0.045);
++}
++
++.tag-manager-tag-row button,
++.tag-manager-selection-actions button,
++.tag-manager-bulk-controls button {
++  border: 1px solid rgba(255, 255, 255, 0.14);
++  border-radius: 10px;
++  background: rgba(255, 255, 255, 0.07);
++  color: inherit;
++  padding: 8px 11px;
++  cursor: pointer;
++}
++
++.tag-manager-tag-name {
++  text-align: left;
++  font-weight: 700;
++}
++
++.tag-manager-tag-row .tag-manager-danger {
++  border-color: rgba(255, 119, 137, 0.28);
++  color: #ffb5c0;
++}
++
++.tag-manager-filters,
++.tag-manager-bulk-controls,
++.tag-manager-selection-actions {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 10px;
++}
++
++.tag-manager-filters,
++.tag-manager-bulk-controls {
++  margin-bottom: 14px;
++}
++
++.tag-manager-filters input,
++.tag-manager-filters select,
++.tag-manager-bulk-controls input {
++  min-height: 42px;
++  border: 1px solid rgba(255, 255, 255, 0.12);
++  border-radius: 11px;
++  background: rgba(5, 8, 18, 0.72);
++  color: inherit;
++  padding: 9px 12px;
++}
++
++.tag-manager-filters input,
++.tag-manager-bulk-controls input {
++  flex: 1 1 280px;
++}
++
++.tag-manager-media-list {
++  max-height: 720px;
++  overflow: auto;
++  padding-right: 4px;
++}
++
++.tag-manager-media-row {
++  display: grid;
++  grid-template-columns: auto minmax(0, 1fr) auto;
++  align-items: flex-start;
++  gap: 12px;
++  padding: 12px;
++  border: 1px solid rgba(255, 255, 255, 0.07);
++  border-radius: 12px;
++  background: rgba(255, 255, 255, 0.035);
++}
++
++.tag-manager-media-row > div {
++  min-width: 0;
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++}
++
++.tag-manager-media-row > a {
++  color: #c9d0ff;
++  text-decoration: none;
++}
++
++.tag-manager-empty {
++  color: rgba(224, 228, 244, 0.66);
++}
++
++@media (max-width: 720px) {
++  .tag-manager-summary {
++    grid-template-columns: 1fr;
++  }
++
++  .tag-manager-panel-heading,
++  .tag-manager-tag-row {
++    display: flex;
++    flex-direction: column;
++    align-items: stretch;
++  }
++}
++
++/* ========================================
++   GLOBAL SEARCH
++======================================== */
++
++.global-search-page {
++  padding-bottom: 80px;
++}
++
++.global-search-hero {
++  display: flex;
++  align-items: center;
++  gap: 14px;
++  margin: 22px 0;
++}
++
++.global-search-hero input {
++  flex: 1;
++  min-width: 0;
++  min-height: 52px;
++  border: 1px solid rgba(199, 208, 255, 0.22);
++  border-radius: 16px;
++  background: rgba(7, 10, 22, 0.82);
++  color: inherit;
++  padding: 12px 16px;
++  font: inherit;
++  font-size: 1rem;
++  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.18);
++}
++
++.global-search-hero > span,
++.global-search-group > header > span {
++  color: rgba(224, 228, 244, 0.62);
++  font-size: 0.76rem;
++  white-space: nowrap;
++}
++
++.global-search-empty {
++  margin-top: 24px;
++  border: 1px dashed rgba(255, 255, 255, 0.13);
++  border-radius: 18px;
++  padding: 34px;
++  text-align: center;
++  color: rgba(224, 228, 244, 0.62);
++}
++
++.global-search-groups {
++  display: grid;
++  gap: 24px;
++}
++
++.global-search-group {
++  border: 1px solid rgba(255, 255, 255, 0.09);
++  border-radius: 18px;
++  background: rgba(14, 18, 34, 0.7);
++  padding: 18px;
++}
++
++.global-search-group > header {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  gap: 12px;
++  margin-bottom: 12px;
++}
++
++.global-search-group h2 {
++  margin: 0;
++  font-size: 1.05rem;
++}
++
++.global-search-results {
++  display: grid;
++  gap: 8px;
++}
++
++.global-search-result {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 16px;
++  border: 1px solid rgba(255, 255, 255, 0.07);
++  border-radius: 13px;
++  background: rgba(255, 255, 255, 0.035);
++  color: inherit;
++  padding: 12px 14px;
++  text-decoration: none;
++}
++
++.global-search-result:hover {
++  border-color: rgba(192, 202, 255, 0.28);
++  background: rgba(123, 139, 224, 0.09);
++}
++
++.global-search-result > div:first-child {
++  min-width: 0;
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++}
++
++.global-search-result span,
++.global-search-chip-result span {
++  color: rgba(224, 228, 244, 0.62);
++  font-size: 0.76rem;
++}
++
++.global-search-result-action {
++  color: #cbd2ff !important;
++  white-space: nowrap;
++}
++
++.global-search-compact-grid {
++  display: grid;
++  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
++  gap: 9px;
++}
++
++.global-search-chip-result {
++  display: flex;
++  flex-direction: column;
++  gap: 5px;
++  border: 1px solid rgba(255, 255, 255, 0.08);
++  border-radius: 12px;
++  background: rgba(255, 255, 255, 0.035);
++  color: inherit;
++  padding: 12px;
++  text-decoration: none;
++}
++
++.global-search-catalog-actions {
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  white-space: nowrap;
++}
++
++.global-search-catalog-actions a {
++  color: #cbd2ff;
++}
++
++.search-file-present,
++.search-file-missing {
++  border-radius: 999px;
++  padding: 4px 8px;
++  font-size: 0.67rem !important;
++  text-transform: uppercase;
++  letter-spacing: 0.05em;
++}
++
++.search-file-present {
++  background: rgba(113, 208, 157, 0.12);
++  color: #b9f4cf !important;
++}
++
++.search-file-missing {
++  background: rgba(255, 135, 153, 0.11);
++  color: #ffc0ca !important;
++}
++
++@media (max-width: 680px) {
++  .global-search-hero,
++  .global-search-result,
++  .global-search-catalog-actions {
++    align-items: stretch;
++    flex-direction: column;
++  }
++
++  .global-search-hero > span {
++    white-space: normal;
++  }
++}
++
++/* ========================================
++   ARCHIVE INTEGRITY
++======================================== */
++
++.integrity-page {
++  padding-bottom: 80px;
++}
++
++.integrity-intro,
++.integrity-job-card,
++.integrity-warning-card,
++.integrity-panel {
++  border: 1px solid rgba(255, 255, 255, 0.09);
++  border-radius: 18px;
++  background: rgba(14, 18, 34, 0.72);
++  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.16);
++}
++
++.integrity-intro,
++.integrity-warning-card {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  gap: 20px;
++  padding: 20px;
++  margin: 22px 0;
++}
++
++.integrity-intro h2,
++.integrity-panel h2 {
++  margin: 0 0 6px;
++}
++
++.integrity-intro p,
++.integrity-warning-card p,
++.integrity-panel header p {
++  margin: 0;
++  color: rgba(224, 228, 244, 0.68);
++  max-width: 760px;
++}
++
++.integrity-actions,
++.integrity-filters {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 9px;
++}
++
++.integrity-actions button,
++.integrity-warning-card button,
++.integrity-filters select,
++.integrity-filters input {
++  min-height: 40px;
++  border: 1px solid rgba(255, 255, 255, 0.14);
++  border-radius: 10px;
++  background: rgba(255, 255, 255, 0.06);
++  color: inherit;
++  padding: 8px 12px;
++}
++
++.integrity-actions button,
++.integrity-warning-card button {
++  cursor: pointer;
++}
++
++.integrity-actions .integrity-primary-button {
++  border-color: rgba(177, 188, 255, 0.4);
++  background: rgba(116, 133, 226, 0.2);
++}
++
++.integrity-job-card {
++  display: grid;
++  gap: 10px;
++  padding: 16px;
++  margin-bottom: 18px;
++}
++
++.integrity-job-card > div:first-child {
++  display: flex;
++  justify-content: space-between;
++  gap: 12px;
++}
++
++.integrity-job-card span,
++.integrity-job-card code {
++  color: rgba(224, 228, 244, 0.66);
++  font-size: 0.76rem;
++}
++
++.integrity-job-progress {
++  overflow: hidden;
++  height: 7px;
++  border-radius: 999px;
++  background: rgba(255, 255, 255, 0.07);
++}
++
++.integrity-job-progress span {
++  display: block;
++  height: 100%;
++  border-radius: inherit;
++  background: linear-gradient(90deg, #8d9cff, #c1c9ff);
++}
++
++.integrity-summary-grid {
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
++  gap: 10px;
++  margin-bottom: 18px;
++}
++
++.integrity-summary-grid > div {
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++  border: 1px solid rgba(255, 255, 255, 0.08);
++  border-radius: 14px;
++  background: rgba(255, 255, 255, 0.035);
++  padding: 14px;
++}
++
++.integrity-summary-grid strong {
++  font-size: 1.35rem;
++}
++
++.integrity-summary-grid span {
++  color: rgba(224, 228, 244, 0.62);
++  font-size: 0.72rem;
++}
++
++.integrity-warning-card {
++  border-color: rgba(255, 164, 115, 0.25);
++  background: rgba(96, 55, 37, 0.22);
++}
++
++.integrity-panel {
++  padding: 18px;
++  margin-top: 18px;
++}
++
++.integrity-panel > header {
++  display: flex;
++  align-items: flex-start;
++  justify-content: space-between;
++  gap: 18px;
++  margin-bottom: 14px;
++}
++
++.integrity-file-list,
++.integrity-duplicate-list {
++  display: grid;
++  gap: 7px;
++}
++
++.integrity-file-row {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 14px;
++  border: 1px solid rgba(255, 255, 255, 0.06);
++  border-radius: 11px;
++  background: rgba(255, 255, 255, 0.03);
++  padding: 10px 12px;
++}
++
++.integrity-file-row > div {
++  min-width: 0;
++  display: flex;
++  flex-direction: column;
++  gap: 3px;
++}
++
++.integrity-file-row strong {
++  overflow-wrap: anywhere;
++}
++
++.integrity-file-row span {
++  color: rgba(224, 228, 244, 0.6);
++  font-size: 0.72rem;
++}
++
++.integrity-status-badge {
++  flex: 0 0 auto;
++  border-radius: 999px;
++  background: rgba(255, 255, 255, 0.07);
++  padding: 5px 8px;
++  font-size: 0.65rem !important;
++  letter-spacing: 0.05em;
++}
++
++.status-hash-changed .integrity-status-badge,
++.status-missing .integrity-status-badge {
++  background: rgba(255, 111, 137, 0.12);
++  color: #ffbec9;
++}
++
++.status-modified .integrity-status-badge,
++.status-unverified .integrity-status-badge {
++  background: rgba(255, 190, 104, 0.12);
++  color: #ffe0aa;
++}
++
++.status-verified .integrity-status-badge {
++  background: rgba(99, 208, 151, 0.12);
++  color: #b9f2ce;
++}
++
++.integrity-duplicate-group {
++  border: 1px solid rgba(255, 255, 255, 0.07);
++  border-radius: 12px;
++  background: rgba(255, 255, 255, 0.03);
++  padding: 11px 13px;
++}
++
++.integrity-duplicate-group summary {
++  display: flex;
++  justify-content: space-between;
++  gap: 12px;
++  cursor: pointer;
++}
++
++.integrity-duplicate-group code {
++  display: block;
++  margin-top: 10px;
++  overflow-wrap: anywhere;
++  color: rgba(224, 228, 244, 0.62);
++}
++
++.integrity-duplicate-group li {
++  overflow-wrap: anywhere;
++  margin-top: 5px;
++}
++
++.integrity-empty {
++  color: rgba(224, 228, 244, 0.62);
++}
++
++@media (max-width: 720px) {
++  .integrity-intro,
++  .integrity-warning-card,
++  .integrity-panel > header,
++  .integrity-file-row {
++    align-items: stretch;
++    flex-direction: column;
++  }
++}
++
++/* ========================================
++   SMART PLAYLISTS
++======================================== */
++
++.smart-playlists-page,
++.smart-playlist-detail-page {
++  padding-bottom: 80px;
++}
++
++.smart-playlist-builder,
++.smart-playlist-library,
++.smart-playlist-edit-panel,
++.smart-playlist-results-heading {
++  border: 1px solid rgba(255, 255, 255, 0.09);
++  border-radius: 18px;
++  background: rgba(14, 18, 34, 0.72);
++  padding: 20px;
++  margin-top: 20px;
++}
++
++.smart-playlist-builder-heading h2,
++.smart-playlist-library h2 {
++  margin: 4px 0 6px;
++}
++
++.smart-playlist-builder-heading p,
++.smart-playlist-results-heading p {
++  margin: 0;
++  color: rgba(224, 228, 244, 0.66);
++}
++
++.smart-playlist-form-grid,
++.smart-playlist-edit-panel {
++  display: grid;
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++  gap: 12px;
++  margin-top: 18px;
++}
++
++.smart-playlist-form-grid label,
++.smart-playlist-edit-panel label {
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++  color: rgba(224, 228, 244, 0.74);
++  font-size: 0.76rem;
++}
++
++.smart-playlist-form-grid input,
++.smart-playlist-form-grid select,
++.smart-playlist-edit-panel input,
++.smart-playlist-edit-panel select {
++  min-height: 42px;
++  border: 1px solid rgba(255, 255, 255, 0.12);
++  border-radius: 10px;
++  background: rgba(6, 9, 20, 0.72);
++  color: inherit;
++  padding: 8px 11px;
++  font: inherit;
++}
++
++.smart-playlist-tags-field {
++  grid-column: 1 / -1;
++}
++
++.smart-playlist-checkbox {
++  flex-direction: row !important;
++  align-items: center;
++  align-self: end;
++  min-height: 42px;
++}
++
++.smart-playlist-checkbox input {
++  min-height: 0;
++}
++
++.smart-playlist-create-button {
++  min-height: 42px;
++  margin-top: 14px;
++  border: 1px solid rgba(184, 195, 255, 0.36);
++  border-radius: 11px;
++  background: rgba(120, 137, 229, 0.2);
++  color: inherit;
++  padding: 9px 14px;
++  cursor: pointer;
++}
++
++.smart-playlist-grid {
++  display: grid;
++  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
++  gap: 12px;
++  margin-top: 14px;
++}
++
++.smart-playlist-card {
++  display: flex;
++  flex-direction: column;
++  gap: 10px;
++  border: 1px solid rgba(255, 255, 255, 0.07);
++  border-radius: 14px;
++  background: rgba(255, 255, 255, 0.035);
++  padding: 14px;
++}
++
++.smart-playlist-card > a {
++  flex: 1;
++  color: inherit;
++  text-decoration: none;
++}
++
++.smart-playlist-card h3 {
++  margin: 6px 0;
++}
++
++.smart-playlist-card p {
++  color: rgba(224, 228, 244, 0.64);
++  font-size: 0.78rem;
++}
++
++.smart-playlist-card button {
++  align-self: flex-start;
++  border: 0;
++  background: transparent;
++  color: #ffb6c2;
++  cursor: pointer;
++}
++
++.smart-playlist-edit-panel {
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++}
++
++.smart-playlist-edit-panel .smart-playlist-create-button {
++  align-self: end;
++}
++
++.smart-playlist-results-heading {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 18px;
++}
++
++.smart-playlist-results-heading > div {
++  display: flex;
++  flex-direction: column;
++  gap: 3px;
++}
++
++.smart-playlist-results-heading strong {
++  font-size: 1.5rem;
++}
++
++.smart-playlist-results-heading span {
++  color: rgba(224, 228, 244, 0.62);
++  font-size: 0.76rem;
++}
++
++.smart-playlist-result-list {
++  display: grid;
++  gap: 8px;
++  margin-top: 18px;
++}
++
++.smart-playlist-result-row {
++  display: flex;
++  justify-content: space-between;
++  gap: 16px;
++  border: 1px solid rgba(255, 255, 255, 0.07);
++  border-radius: 13px;
++  background: rgba(255, 255, 255, 0.035);
++  color: inherit;
++  padding: 12px 14px;
++  text-decoration: none;
++}
++
++.smart-playlist-result-row > div:first-child {
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++  min-width: 0;
++}
++
++.smart-playlist-result-row span,
++.smart-playlist-empty {
++  color: rgba(224, 228, 244, 0.62);
++  font-size: 0.76rem;
++}
++
++.smart-playlist-result-state {
++  display: flex;
++  flex-wrap: wrap;
++  justify-content: flex-end;
++  align-content: flex-start;
++  gap: 7px;
++}
++
++@media (max-width: 720px) {
++  .smart-playlist-form-grid,
++  .smart-playlist-edit-panel {
++    grid-template-columns: 1fr;
++  }
++
++  .smart-playlist-tags-field {
++    grid-column: auto;
++  }
++
++  .smart-playlist-results-heading,
++  .smart-playlist-result-row {
++    flex-direction: column;
++    align-items: stretch;
++  }
++
++  .smart-playlist-result-state {
++    justify-content: flex-start;
++  }
++}
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 8605703..1ea3fa1 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -24,8 +24,11 @@ import ContinueWatchingPage from './pages/ContinueWatchingPage'
+ import HistoryPage from './pages/HistoryPage'
+ import StatsPage from './pages/StatsPage'
+ import RankingPage from './pages/RankingPage'
++import GlobalSearchPage from './pages/GlobalSearchPage'
+ 
+ import PlaylistsPage from './pages/PlaylistsPage'
++import SmartPlaylistsPage from './pages/SmartPlaylistsPage'
++import SmartPlaylistDetailPage from './pages/SmartPlaylistDetailPage'
+ import PlaylistDetailPage from './pages/PlaylistDetailPage'
+ 
+ import MemoriaPage from './pages/MemoriaPage'
+@@ -49,6 +52,8 @@ import SettingsPage from './pages/SettingsPage'
+ 
+ import LibraryStatusPage from './pages/LibraryStatusPage'
+ import ArchiveCompletenessPage from './pages/ArchiveCompletenessPage'
++import ArchiveIntegrityPage from './pages/ArchiveIntegrityPage'
++import TagManagerPage from './pages/TagManagerPage'
+ import MetadataHealthPage from './pages/MetadataHealthPage'
+ import ThumbnailCachePage from './pages/ThumbnailCachePage'
+ import DatabaseMaintenancePage from './pages/DatabaseMaintenancePage'
+@@ -2470,6 +2475,14 @@ function App() {
+         />
+ 
+ 
++        <Route
++          path="/search"
++          element={
++            <GlobalSearchPage />
++          }
++        />
++
++
+         <Route
+           path="/favorites"
+           element={
+@@ -2510,6 +2523,22 @@ function App() {
+         />
+ 
+ 
++        <Route
++          path="/smart-playlists"
++          element={
++            <SmartPlaylistsPage />
++          }
++        />
++
++
++        <Route
++          path="/smart-playlists/:id"
++          element={
++            <SmartPlaylistDetailPage />
++          }
++        />
++
++
+         <Route
+           path="/playlists"
+           element={
+@@ -2604,6 +2633,22 @@ function App() {
+   }
+ />
+ 
++
++<Route
++  path="/settings/tags"
++  element={
++    <TagManagerPage />
++  }
++/>
++
++
++<Route
++  path="/settings/integrity"
++  element={
++    <ArchiveIntegrityPage />
++  }
++/>
++
+ <Route
+   path="/settings/completeness"
+   element={
+diff --git a/frontend/src/data/archiveIndex.ts b/frontend/src/data/archiveIndex.ts
+new file mode 100644
+index 0000000..261f393
+--- /dev/null
++++ b/frontend/src/data/archiveIndex.ts
+@@ -0,0 +1,143 @@
++import type {
++  ArchiveItem,
++} from './archive'
++
++import {
++  personalArchiveSources,
++} from './personalArchive'
++
++
++export type ArchiveIndexItem =
++  ArchiveItem & {
++    archiveCategory: string
++    playerPath: string
++  }
++
++
++export type ArchiveIndexResult = {
++  items: ArchiveIndexItem[]
++  sourceErrors:
++    Record<string, string>
++}
++
++
++export function archiveIndexKey(
++  category: string,
++  relativePath: string
++) {
++  return `${category}\u0000${relativePath}`
++}
++
++
++export function archiveIndexPlayerUrl(
++  item: ArchiveIndexItem
++) {
++  const query =
++    new URLSearchParams({
++      file:
++        item.relativePath,
++    })
++
++  if (
++    item.archiveCategory === 'Phone Call' ||
++    item.archiveCategory === 'Phone Video'
++  ) {
++    query.set(
++      'category',
++      item.archiveCategory
++    )
++  }
++
++  return `${item.playerPath}?${query}`
++}
++
++
++export async function fetchArchiveIndex():
++  Promise<ArchiveIndexResult> {
++
++  const results =
++    await Promise.allSettled(
++      personalArchiveSources.map(
++        async (
++          source
++        ) => {
++          const response =
++            await fetch(
++              source.endpoint
++            )
++
++          if (!response.ok) {
++            throw new Error(
++              `Unable to load ${source.category}.`
++            )
++          }
++
++          const data =
++            await response.json() as {
++              items?: ArchiveItem[]
++            }
++
++          return (
++            Array.isArray(data.items)
++              ? data.items
++              : []
++          ).map(
++            (item): ArchiveIndexItem => ({
++              ...item,
++              category:
++                source.category,
++              archiveCategory:
++                source.category,
++              playerPath:
++                source.playerPath,
++            })
++          )
++        }
++      )
++    )
++
++
++  const items:
++    ArchiveIndexItem[] = []
++
++  const sourceErrors:
++    Record<string, string> = {}
++
++
++  results.forEach(
++    (
++      result,
++      index
++    ) => {
++      const source =
++        personalArchiveSources[index]
++
++      if (
++        !source
++      ) {
++        return
++      }
++
++      if (
++        result.status === 'fulfilled'
++      ) {
++        items.push(
++          ...result.value
++        )
++      } else {
++        sourceErrors[
++          source.category
++        ] =
++          result.reason instanceof Error
++            ? result.reason.message
++            : `Unable to load ${source.category}.`
++      }
++    }
++  )
++
++
++  return {
++    items,
++    sourceErrors,
++  }
++}
+diff --git a/frontend/src/data/mediaTags.ts b/frontend/src/data/mediaTags.ts
+index 12ec1d8..0ec3f88 100644
+--- a/frontend/src/data/mediaTags.ts
++++ b/frontend/src/data/mediaTags.ts
+@@ -440,3 +440,127 @@ export function useMediaTags() {
+   }
+ 
+ }
++
++
++export async function bulkUpdateMediaTags(
++  items: Array<{
++    category: string
++    relativePath: string
++  }>,
++  options: {
++    addTags?: string[]
++    removeTags?: string[]
++  }
++) {
++  const response =
++    await fetch(
++      '/api/media-tags/bulk',
++      {
++        method: 'POST',
++        headers: {
++          'Content-Type':
++            'application/json',
++        },
++        body:
++          JSON.stringify({
++            items,
++            addTags:
++              options.addTags ?? [],
++            removeTags:
++              options.removeTags ?? [],
++          }),
++      }
++    )
++
++  if (!response.ok) {
++    const body =
++      await response.json()
++        .catch(
++          () => null
++        ) as {
++          error?: string
++        } | null
++
++    throw new Error(
++      body?.error ??
++      'Unable to bulk update tags.'
++    )
++  }
++
++  await loadMediaTags(true)
++}
++
++
++export async function renameMediaTag(
++  currentName: string,
++  newName: string
++) {
++  const response =
++    await fetch(
++      '/api/media-tags/tag',
++      {
++        method: 'PUT',
++        headers: {
++          'Content-Type':
++            'application/json',
++        },
++        body:
++          JSON.stringify({
++            currentName,
++            newName,
++          }),
++      }
++    )
++
++  const body =
++    await response.json()
++      .catch(
++        () => null
++      ) as {
++        error?: string
++      } | null
++
++  if (!response.ok) {
++    throw new Error(
++      body?.error ??
++      'Unable to rename tag.'
++    )
++  }
++
++  await loadMediaTags(true)
++}
++
++
++export async function deleteMediaTag(
++  name: string
++) {
++  const query =
++    new URLSearchParams({
++      name,
++    })
++
++  const response =
++    await fetch(
++      `/api/media-tags/tag?${query}`,
++      {
++        method: 'DELETE',
++      }
++    )
++
++  const body =
++    await response.json()
++      .catch(
++        () => null
++      ) as {
++        error?: string
++      } | null
++
++  if (!response.ok) {
++    throw new Error(
++      body?.error ??
++      'Unable to delete tag.'
++    )
++  }
++
++  await loadMediaTags(true)
++}
+diff --git a/frontend/src/data/smartPlaylists.ts b/frontend/src/data/smartPlaylists.ts
+new file mode 100644
+index 0000000..4cc52d5
+--- /dev/null
++++ b/frontend/src/data/smartPlaylists.ts
+@@ -0,0 +1,197 @@
++export type SmartPlaylistStatus =
++  | 'any'
++  | 'unwatched'
++  | 'in-progress'
++  | 'completed'
++
++export type SmartPlaylistTagMode =
++  | 'any'
++  | 'all'
++
++export type SmartPlaylistRules = {
++  characters: string[]
++  categories: string[]
++  tags: string[]
++  tagMode: SmartPlaylistTagMode
++  favoriteOnly: boolean
++  status: SmartPlaylistStatus
++  minRating: number | null
++}
++
++export type SmartPlaylist = {
++  id: number
++  name: string
++  rules: SmartPlaylistRules
++  createdAt: string
++  updatedAt: string
++}
++
++
++export const emptySmartPlaylistRules:
++  SmartPlaylistRules = {
++    characters: [],
++    categories: [],
++    tags: [],
++    tagMode: 'any',
++    favoriteOnly: false,
++    status: 'any',
++    minRating: null,
++  }
++
++
++async function readError(
++  response: Response,
++  fallback: string
++) {
++  const body =
++    await response.json()
++      .catch(
++        () => null
++      ) as {
++        error?: string
++      } | null
++
++  return body?.error ??
++    fallback
++}
++
++
++export async function fetchSmartPlaylists() {
++  const response =
++    await fetch(
++      '/api/smart-playlists'
++    )
++
++  if (!response.ok) {
++    throw new Error(
++      await readError(
++        response,
++        'Unable to load smart playlists.'
++      )
++    )
++  }
++
++  const data =
++    await response.json() as {
++      items?: SmartPlaylist[]
++    }
++
++  return Array.isArray(data.items)
++    ? data.items
++    : []
++}
++
++
++export async function fetchSmartPlaylist(
++  id: number
++) {
++  const response =
++    await fetch(
++      `/api/smart-playlists/${id}`
++    )
++
++  if (!response.ok) {
++    throw new Error(
++      await readError(
++        response,
++        'Unable to load smart playlist.'
++      )
++    )
++  }
++
++  return await response.json() as
++    SmartPlaylist
++}
++
++
++export async function createSmartPlaylist(
++  name: string,
++  rules: SmartPlaylistRules
++) {
++  const response =
++    await fetch(
++      '/api/smart-playlists',
++      {
++        method: 'POST',
++        headers: {
++          'Content-Type':
++            'application/json',
++        },
++        body:
++          JSON.stringify({
++            name,
++            rules,
++          }),
++      }
++    )
++
++  if (!response.ok) {
++    throw new Error(
++      await readError(
++        response,
++        'Unable to create smart playlist.'
++      )
++    )
++  }
++
++  return await response.json() as
++    SmartPlaylist
++}
++
++
++export async function updateSmartPlaylist(
++  id: number,
++  name: string,
++  rules: SmartPlaylistRules
++) {
++  const response =
++    await fetch(
++      `/api/smart-playlists/${id}`,
++      {
++        method: 'PUT',
++        headers: {
++          'Content-Type':
++            'application/json',
++        },
++        body:
++          JSON.stringify({
++            name,
++            rules,
++          }),
++      }
++    )
++
++  if (!response.ok) {
++    throw new Error(
++      await readError(
++        response,
++        'Unable to update smart playlist.'
++      )
++    )
++  }
++
++  return await response.json() as
++    SmartPlaylist
++}
++
++
++export async function deleteSmartPlaylist(
++  id: number
++) {
++  const response =
++    await fetch(
++      `/api/smart-playlists/${id}`,
++      {
++        method: 'DELETE',
++      }
++    )
++
++  if (!response.ok) {
++    throw new Error(
++      await readError(
++        response,
++        'Unable to delete smart playlist.'
++      )
++    )
++  }
++}
+diff --git a/frontend/src/pages/ArchiveIntegrityPage.tsx b/frontend/src/pages/ArchiveIntegrityPage.tsx
+new file mode 100644
+index 0000000..73a191b
+--- /dev/null
++++ b/frontend/src/pages/ArchiveIntegrityPage.tsx
+@@ -0,0 +1,698 @@
++import {
++  useCallback,
++  useEffect,
++  useMemo,
++  useState,
++} from 'react'
++
++import {
++  Link,
++} from 'react-router-dom'
++
++
++type IntegrityStatus =
++  | 'verified'
++  | 'unverified'
++  | 'modified'
++  | 'hash-changed'
++  | 'missing'
++
++
++type IntegrityItem = {
++  relativePath: string
++  mediaType: string
++  status: IntegrityStatus
++  sizeBytes: number
++  baselineSizeBytes: number
++  mtimeMs: number
++  baselineMtimeMs: number
++  sha256: string | null
++  observedSha256: string | null
++  verifiedAt: string | null
++  firstSeenAt: string
++  lastSeenAt: string
++}
++
++
++type DuplicateGroup = {
++  sha256: string
++  count: number
++  sizeBytes: number
++  items: string[]
++}
++
++
++type IntegrityJob = {
++  id: string
++  mode: 'quick' | 'verify'
++  status:
++    | 'running'
++    | 'completed'
++    | 'failed'
++  startedAt: string
++  completedAt: string | null
++  total: number
++  processed: number
++  currentPath: string | null
++  error: string | null
++  warnings: string[]
++}
++
++
++type IntegrityReport = {
++  latestCompletedRun: {
++    mode: string
++    startedAt: string
++    completedAt: string | null
++    fileCount: number
++  } | null
++  summary: {
++    tracked: number
++    current: number
++    verified: number
++    unverified: number
++    modified: number
++    hashChanged: number
++    missing: number
++    duplicateGroups: number
++    duplicateFiles: number
++  }
++  items: IntegrityItem[]
++  duplicates: DuplicateGroup[]
++  job: IntegrityJob | null
++}
++
++
++function formatBytes(
++  value: number
++) {
++  if (
++    !Number.isFinite(value) ||
++    value <= 0
++  ) {
++    return '0 B'
++  }
++
++  const units = [
++    'B',
++    'KB',
++    'MB',
++    'GB',
++    'TB',
++  ]
++
++  let amount = value
++  let unit = 0
++
++  while (
++    amount >= 1024 &&
++    unit < units.length - 1
++  ) {
++    amount /= 1024
++    unit += 1
++  }
++
++  return `${amount.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
++}
++
++
++function statusLabel(
++  status: IntegrityStatus
++) {
++  switch (status) {
++    case 'hash-changed':
++      return 'CONTENT CHANGED'
++    case 'modified':
++      return 'NEEDS VERIFY'
++    case 'unverified':
++      return 'UNVERIFIED'
++    case 'missing':
++      return 'MISSING'
++    default:
++      return 'VERIFIED'
++  }
++}
++
++
++function ArchiveIntegrityPage() {
++  const [
++    report,
++    setReport,
++  ] = useState<IntegrityReport | null>(
++    null
++  )
++
++  const [
++    loading,
++    setLoading,
++  ] = useState(true)
++
++  const [
++    error,
++    setError,
++  ] = useState('')
++
++  const [
++    starting,
++    setStarting,
++  ] = useState(false)
++
++  const [
++    filter,
++    setFilter,
++  ] = useState<IntegrityStatus | 'issues'>(
++    'issues'
++  )
++
++  const [
++    searchText,
++    setSearchText,
++  ] = useState('')
++
++
++  const loadReport =
++    useCallback(
++      async () => {
++        try {
++          const response =
++            await fetch(
++              '/api/archive-integrity'
++            )
++
++          if (!response.ok) {
++            throw new Error(
++              'Unable to load archive integrity.'
++            )
++          }
++
++          const data =
++            await response.json() as
++              IntegrityReport
++
++          setReport(data)
++          setError('')
++        } catch (
++          loadError
++        ) {
++          setError(
++            loadError instanceof Error
++              ? loadError.message
++              : 'Unable to load archive integrity.'
++          )
++        } finally {
++          setLoading(false)
++        }
++      },
++      []
++    )
++
++
++  useEffect(
++    () => {
++      const timer =
++        window.setTimeout(
++          () => {
++            void loadReport()
++          },
++          0
++        )
++
++      return () =>
++        window.clearTimeout(timer)
++    },
++    [loadReport]
++  )
++
++
++  useEffect(
++    () => {
++      if (
++        report?.job?.status !==
++        'running'
++      ) {
++        return
++      }
++
++      const interval =
++        window.setInterval(
++          () => {
++            void loadReport()
++          },
++          1000
++        )
++
++      return () =>
++        window.clearInterval(
++          interval
++        )
++    },
++    [report?.job?.status, loadReport]
++  )
++
++
++  async function startScan(
++    mode: 'quick' | 'verify'
++  ) {
++    try {
++      setStarting(true)
++      setError('')
++
++      const response =
++        await fetch(
++          '/api/archive-integrity/scan',
++          {
++            method: 'POST',
++            headers: {
++              'Content-Type':
++                'application/json',
++            },
++            body:
++              JSON.stringify({
++                mode,
++              }),
++          }
++        )
++
++      const body =
++        await response.json()
++          .catch(
++            () => null
++          ) as {
++            error?: string
++          } | null
++
++      if (!response.ok) {
++        throw new Error(
++          body?.error ??
++          'Unable to start integrity scan.'
++        )
++      }
++
++      await loadReport()
++    } catch (
++      scanError
++    ) {
++      setError(
++        scanError instanceof Error
++          ? scanError.message
++          : 'Unable to start integrity scan.'
++      )
++    } finally {
++      setStarting(false)
++    }
++  }
++
++
++  async function acceptChanges() {
++    if (
++      !window.confirm(
++        'Accept the currently verified changed files as the new integrity baseline?'
++      )
++    ) {
++      return
++    }
++
++    try {
++      const response =
++        await fetch(
++          '/api/archive-integrity/accept',
++          {
++            method: 'POST',
++            headers: {
++              'Content-Type':
++                'application/json',
++            },
++            body:
++              JSON.stringify({}),
++          }
++        )
++
++      if (!response.ok) {
++        throw new Error(
++          'Unable to accept integrity changes.'
++        )
++      }
++
++      await loadReport()
++    } catch (
++      acceptError
++    ) {
++      setError(
++        acceptError instanceof Error
++          ? acceptError.message
++          : 'Unable to accept integrity changes.'
++      )
++    }
++  }
++
++
++  const issueItems =
++    useMemo(
++      () => {
++        if (!report) {
++          return []
++        }
++
++        const search =
++          searchText
++            .trim()
++            .toLocaleLowerCase()
++
++        return report.items.filter(
++          (item) => {
++            const matchesStatus =
++              filter === 'issues'
++                ? item.status !== 'verified'
++                : item.status === filter
++
++            return (
++              matchesStatus &&
++              (
++                !search ||
++                item.relativePath
++                  .toLocaleLowerCase()
++                  .includes(search)
++              )
++            )
++          }
++        )
++      },
++      [
++        filter,
++        report,
++        searchText,
++      ]
++    )
++
++
++  if (
++    loading &&
++    !report
++  ) {
++    return (
++      <main className="archive-page">
++        <p>
++          Loading archive integrity…
++        </p>
++      </main>
++    )
++  }
++
++
++  const job =
++    report?.job ??
++    null
++
++  const progress =
++    job &&
++    job.total > 0
++      ? Math.round(
++          job.processed /
++          job.total *
++          100
++        )
++      : 0
++
++
++  return (
++    <main className="archive-page integrity-page">
++      <header className="archive-page-header">
++        <Link
++          to="/settings"
++          className="back-button"
++        >
++          ‹
++        </Link>
++
++        <div>
++          <span className="archive-eyebrow">
++            PRESERVATION
++          </span>
++          <h1>
++            Archive Integrity
++          </h1>
++        </div>
++      </header>
++
++      <section className="integrity-intro">
++        <div>
++          <h2>
++            Verify the files you preserved
++          </h2>
++          <p>
++            Quick Scan checks file presence, size, and modified dates. Full Verify reads each media file and calculates SHA-256 so exact duplicates and content changes can be detected.
++          </p>
++        </div>
++
++        <div className="integrity-actions">
++          <button
++            type="button"
++            disabled={
++              starting ||
++              job?.status === 'running'
++            }
++            onClick={() =>
++              void startScan('quick')
++            }
++          >
++            Quick Scan
++          </button>
++          <button
++            type="button"
++            className="integrity-primary-button"
++            disabled={
++              starting ||
++              job?.status === 'running'
++            }
++            onClick={() =>
++              void startScan('verify')
++            }
++          >
++            Full SHA-256 Verify
++          </button>
++        </div>
++      </section>
++
++      {error && (
++        <section className="settings-status-error">
++          {error}
++        </section>
++      )}
++
++      {job?.status === 'running' && (
++        <section className="integrity-job-card">
++          <div>
++            <strong>
++              {job.mode === 'verify'
++                ? 'Verifying archive'
++                : 'Scanning archive'}
++            </strong>
++            <span>
++              {job.processed} / {job.total || '…'} files · {progress}%
++            </span>
++          </div>
++          <div className="integrity-job-progress">
++            <span
++              style={{
++                width:
++                  `${progress}%`,
++              }}
++            />
++          </div>
++          {job.currentPath && (
++            <code>
++              {job.currentPath}
++            </code>
++          )}
++        </section>
++      )}
++
++      {report && (
++        <>
++          <section className="integrity-summary-grid">
++            {[
++              ['Current', report.summary.current],
++              ['Verified', report.summary.verified],
++              ['Unverified', report.summary.unverified],
++              ['Needs verify', report.summary.modified],
++              ['Content changed', report.summary.hashChanged],
++              ['Missing', report.summary.missing],
++              ['Duplicate sets', report.summary.duplicateGroups],
++            ].map(
++              ([label, value]) => (
++                <div key={label as string}>
++                  <strong>
++                    {value}
++                  </strong>
++                  <span>
++                    {label}
++                  </span>
++                </div>
++              )
++            )}
++          </section>
++
++          {report.summary.hashChanged > 0 && (
++            <section className="integrity-warning-card">
++              <div>
++                <strong>
++                  {report.summary.hashChanged} file{report.summary.hashChanged === 1 ? '' : 's'} have a different SHA-256 than the saved baseline.
++                </strong>
++                <p>
++                  Review these before accepting them. DeepSpace Archive will never replace the saved baseline automatically when file contents change.
++                </p>
++              </div>
++              <button
++                type="button"
++                onClick={() =>
++                  void acceptChanges()
++                }
++              >
++                Accept verified changes
++              </button>
++            </section>
++          )}
++
++          <section className="integrity-panel">
++            <header>
++              <div>
++                <span className="archive-eyebrow">
++                  FILE STATUS
++                </span>
++                <h2>
++                  Files needing attention
++                </h2>
++              </div>
++
++              <div className="integrity-filters">
++                <select
++                  value={filter}
++                  onChange={(event) =>
++                    setFilter(
++                      event.target.value as IntegrityStatus | 'issues'
++                    )
++                  }
++                >
++                  <option value="issues">
++                    All issues
++                  </option>
++                  <option value="unverified">
++                    Unverified
++                  </option>
++                  <option value="modified">
++                    Needs verify
++                  </option>
++                  <option value="hash-changed">
++                    Content changed
++                  </option>
++                  <option value="missing">
++                    Missing
++                  </option>
++                  <option value="verified">
++                    Verified
++                  </option>
++                </select>
++                <input
++                  type="search"
++                  value={searchText}
++                  placeholder="Filter path"
++                  onChange={(event) =>
++                    setSearchText(
++                      event.target.value
++                    )
++                  }
++                />
++              </div>
++            </header>
++
++            {issueItems.length === 0 ? (
++              <p className="integrity-empty">
++                Nothing matches this filter.
++              </p>
++            ) : (
++              <div className="integrity-file-list">
++                {issueItems.slice(0, 500).map(
++                  (item) => (
++                    <div
++                      key={item.relativePath}
++                      className={`integrity-file-row status-${item.status}`}
++                    >
++                      <div>
++                        <strong>
++                          {item.relativePath}
++                        </strong>
++                        <span>
++                          {item.mediaType} · {formatBytes(item.sizeBytes)}
++                        </span>
++                      </div>
++                      <span className="integrity-status-badge">
++                        {statusLabel(item.status)}
++                      </span>
++                    </div>
++                  )
++                )}
++              </div>
++            )}
++          </section>
++
++          <section className="integrity-panel">
++            <header>
++              <div>
++                <span className="archive-eyebrow">
++                  EXACT DUPLICATES
++                </span>
++                <h2>
++                  Duplicate hashes
++                </h2>
++                <p>
++                  Files only appear here when their SHA-256 values are identical. Nothing is deleted automatically.
++                </p>
++              </div>
++            </header>
++
++            {report.duplicates.length === 0 ? (
++              <p className="integrity-empty">
++                No verified duplicate sets found.
++              </p>
++            ) : (
++              <div className="integrity-duplicate-list">
++                {report.duplicates.map(
++                  (group) => (
++                    <details
++                      key={group.sha256}
++                      className="integrity-duplicate-group"
++                    >
++                      <summary>
++                        <strong>
++                          {group.count} identical files
++                        </strong>
++                        <span>
++                          {formatBytes(group.sizeBytes)} each
++                        </span>
++                      </summary>
++                      <code>
++                        SHA-256 {group.sha256}
++                      </code>
++                      <ul>
++                        {group.items.map(
++                          (relativePath) => (
++                            <li key={relativePath}>
++                              {relativePath}
++                            </li>
++                          )
++                        )}
++                      </ul>
++                    </details>
++                  )
++                )}
++              </div>
++            )}
++          </section>
++        </>
++      )}
++    </main>
++  )
++}
++
++
++export default ArchiveIntegrityPage
+diff --git a/frontend/src/pages/GlobalSearchPage.tsx b/frontend/src/pages/GlobalSearchPage.tsx
+new file mode 100644
+index 0000000..c56766e
+--- /dev/null
++++ b/frontend/src/pages/GlobalSearchPage.tsx
+@@ -0,0 +1,637 @@
++import {
++  useCallback,
++  useEffect,
++  useMemo,
++  useState,
++} from 'react'
++
++import {
++  Link,
++  useSearchParams,
++} from 'react-router-dom'
++
++import {
++  archiveIndexPlayerUrl,
++  fetchArchiveIndex,
++} from '../data/archiveIndex'
++
++import type {
++  ArchiveIndexItem,
++} from '../data/archiveIndex'
++
++import type {
++  Playlist,
++} from '../data/playlists'
++
++import type {
++  CatalogItem,
++  CatalogResponse,
++} from '../features/catalog/catalogTypes'
++
++import {
++  MediaTagChips,
++} from '../components/MediaTagControls'
++
++import {
++  useMediaTags,
++} from '../data/mediaTags'
++
++
++type SearchData = {
++  media: ArchiveIndexItem[]
++  playlists: Playlist[]
++}
++
++
++function normalize(
++  value: string
++) {
++  return value
++    .trim()
++    .toLocaleLowerCase()
++}
++
++
++function GlobalSearchPage() {
++  const [
++    searchParams,
++    setSearchParams,
++  ] = useSearchParams()
++
++  const [
++    query,
++    setQuery,
++  ] = useState(
++    searchParams.get('q') ?? ''
++  )
++
++  const [
++    data,
++    setData,
++  ] = useState<SearchData>({
++    media: [],
++    playlists: [],
++  })
++
++  const [
++    catalogItems,
++    setCatalogItems,
++  ] = useState<CatalogItem[]>([])
++
++  const [
++    loading,
++    setLoading,
++  ] = useState(true)
++
++  const [
++    catalogLoading,
++    setCatalogLoading,
++  ] = useState(false)
++
++  const [
++    error,
++    setError,
++  ] = useState('')
++
++  const {
++    tags,
++    tagsFor,
++  } = useMediaTags()
++
++
++  const loadBaseData =
++    useCallback(
++      async () => {
++        try {
++          setLoading(true)
++
++          const [
++            archiveResult,
++            playlistResponse,
++          ] = await Promise.all([
++            fetchArchiveIndex(),
++            fetch('/api/playlists'),
++          ])
++
++          if (!playlistResponse.ok) {
++            throw new Error(
++              'Unable to load playlists.'
++            )
++          }
++
++          const playlistData =
++            await playlistResponse.json() as {
++              items?: Playlist[]
++            }
++
++          setData({
++            media:
++              archiveResult.items,
++            playlists:
++              Array.isArray(
++                playlistData.items
++              )
++                ? playlistData.items
++                : [],
++          })
++
++          const warnings =
++            Object.values(
++              archiveResult.sourceErrors
++            )
++
++          setError(
++            warnings.join(' ')
++          )
++        } catch (
++          loadError
++        ) {
++          setError(
++            loadError instanceof Error
++              ? loadError.message
++              : 'Unable to load archive search.'
++          )
++        } finally {
++          setLoading(false)
++        }
++      },
++      []
++    )
++
++
++  useEffect(
++    () => {
++      const timeoutId =
++        window.setTimeout(
++          () => {
++            void loadBaseData()
++          },
++          0
++        )
++
++      return () => {
++        window.clearTimeout(
++          timeoutId
++        )
++      }
++    },
++    [loadBaseData]
++  )
++
++
++  useEffect(
++    () => {
++      const trimmed =
++        query.trim()
++
++      const next =
++        new URLSearchParams(
++          searchParams
++        )
++
++      if (trimmed) {
++        next.set(
++          'q',
++          trimmed
++        )
++      } else {
++        next.delete('q')
++      }
++
++      if (
++        next.toString() !==
++        searchParams.toString()
++      ) {
++        setSearchParams(
++          next,
++          {
++            replace: true,
++          }
++        )
++      }
++
++      if (
++        trimmed.length < 2
++      ) {
++        const clearTimer =
++          window.setTimeout(
++            () => {
++              setCatalogItems([])
++              setCatalogLoading(false)
++            },
++            0
++          )
++
++        return () => {
++          window.clearTimeout(
++            clearTimer
++          )
++        }
++      }
++
++      let cancelled = false
++
++      const timeoutId =
++        window.setTimeout(
++          async () => {
++            try {
++              setCatalogLoading(true)
++
++              const params =
++                new URLSearchParams({
++                  q:
++                    trimmed,
++                  limit:
++                    '25',
++                  offset:
++                    '0',
++                })
++
++              const response =
++                await fetch(
++                  `/api/catalog?${params}`
++                )
++
++              if (!response.ok) {
++                throw new Error(
++                  'Unable to search metadata catalog.'
++                )
++              }
++
++              const result =
++                await response.json() as
++                  CatalogResponse
++
++              if (!cancelled) {
++                setCatalogItems(
++                  result.items
++                )
++              }
++            } catch (
++              catalogError
++            ) {
++              if (!cancelled) {
++                console.error(
++                  catalogError
++                )
++                setCatalogItems([])
++              }
++            } finally {
++              if (!cancelled) {
++                setCatalogLoading(false)
++              }
++            }
++          },
++          220
++        )
++
++      return () => {
++        cancelled = true
++        window.clearTimeout(
++          timeoutId
++        )
++      }
++    },
++    [
++      query,
++      searchParams,
++      setSearchParams,
++    ]
++  )
++
++
++  const normalizedQuery =
++    normalize(query)
++
++
++  const mediaResults =
++    useMemo(
++      () => {
++        if (!normalizedQuery) {
++          return []
++        }
++
++        return data.media
++          .filter(
++            (item) => {
++              const itemTags =
++                tagsFor(
++                  item.archiveCategory,
++                  item.relativePath
++                )
++
++              return [
++                item.title,
++                item.character,
++                item.archiveCategory,
++                item.relativePath,
++                item.fileName,
++                ...itemTags,
++              ]
++                .join(' ')
++                .toLocaleLowerCase()
++                .includes(
++                  normalizedQuery
++                )
++            }
++          )
++          .slice(0, 50)
++      },
++      [
++        data.media,
++        normalizedQuery,
++        tagsFor,
++      ]
++    )
++
++
++  const playlistResults =
++    useMemo(
++      () =>
++        normalizedQuery
++          ? data.playlists
++              .filter(
++                (playlist) =>
++                  playlist.name
++                    .toLocaleLowerCase()
++                    .includes(
++                      normalizedQuery
++                    )
++              )
++              .slice(0, 20)
++          : [],
++      [
++        data.playlists,
++        normalizedQuery,
++      ]
++    )
++
++
++  const tagResults =
++    useMemo(
++      () =>
++        normalizedQuery
++          ? tags
++              .filter(
++                (tag) =>
++                  tag.name
++                    .toLocaleLowerCase()
++                    .includes(
++                      normalizedQuery
++                    )
++              )
++              .slice(0, 20)
++          : [],
++      [
++        normalizedQuery,
++        tags,
++      ]
++    )
++
++
++  const resultCount =
++    mediaResults.length +
++    playlistResults.length +
++    tagResults.length +
++    catalogItems.length
++
++
++  return (
++    <main className="archive-page global-search-page">
++      <header className="archive-page-header">
++        <Link
++          to="/"
++          className="back-button"
++        >
++          ‹
++        </Link>
++
++        <div>
++          <span className="archive-eyebrow">
++            DEEPSPACE ARCHIVE
++          </span>
++          <h1>
++            Search
++          </h1>
++        </div>
++      </header>
++
++      <section className="global-search-hero">
++        <input
++          autoFocus
++          type="search"
++          value={query}
++          placeholder="Search media, characters, tags, playlists, filenames, or wiki metadata"
++          onChange={(event) =>
++            setQuery(
++              event.target.value
++            )
++          }
++        />
++
++        <span>
++          {normalizedQuery
++            ? `${resultCount}${catalogLoading ? '+' : ''} results`
++            : `${data.media.length} playable media items indexed`}
++        </span>
++      </section>
++
++      {error && (
++        <section className="settings-status-error">
++          {error}
++        </section>
++      )}
++
++      {loading ? (
++        <section className="global-search-empty">
++          Building archive search…
++        </section>
++      ) : !normalizedQuery ? (
++        <section className="global-search-empty">
++          Start typing to search across your archive.
++        </section>
++      ) : resultCount === 0 && !catalogLoading ? (
++        <section className="global-search-empty">
++          No matches for “{query.trim()}”.
++        </section>
++      ) : (
++        <div className="global-search-groups">
++          {mediaResults.length > 0 && (
++            <section className="global-search-group">
++              <header>
++                <h2>
++                  Media
++                </h2>
++                <span>
++                  {mediaResults.length}
++                </span>
++              </header>
++
++              <div className="global-search-results">
++                {mediaResults.map(
++                  (item) => {
++                    const itemTags =
++                      tagsFor(
++                        item.archiveCategory,
++                        item.relativePath
++                      )
++
++                    return (
++                      <Link
++                        key={`${item.archiveCategory}\u0000${item.relativePath}`}
++                        to={
++                          archiveIndexPlayerUrl(
++                            item
++                          )
++                        }
++                        className="global-search-result"
++                      >
++                        <div>
++                          <strong>
++                            {item.title}
++                          </strong>
++                          <span>
++                            {[item.character, item.archiveCategory]
++                              .filter(Boolean)
++                              .join(' · ')}
++                          </span>
++                          <MediaTagChips
++                            tags={itemTags}
++                          />
++                        </div>
++                        <span className="global-search-result-action">
++                          Play ›
++                        </span>
++                      </Link>
++                    )
++                  }
++                )}
++              </div>
++            </section>
++          )}
++
++          {tagResults.length > 0 && (
++            <section className="global-search-group">
++              <header>
++                <h2>
++                  Tags
++                </h2>
++                <span>
++                  {tagResults.length}
++                </span>
++              </header>
++
++              <div className="global-search-compact-grid">
++                {tagResults.map(
++                  (tag) => (
++                    <Link
++                      key={tag.name}
++                      to={`/settings/tags?tag=${encodeURIComponent(tag.name)}`}
++                      className="global-search-chip-result"
++                    >
++                      <strong>
++                        #{tag.name}
++                      </strong>
++                      <span>
++                        {tag.count} item{tag.count === 1 ? '' : 's'}
++                      </span>
++                    </Link>
++                  )
++                )}
++              </div>
++            </section>
++          )}
++
++          {playlistResults.length > 0 && (
++            <section className="global-search-group">
++              <header>
++                <h2>
++                  Playlists
++                </h2>
++                <span>
++                  {playlistResults.length}
++                </span>
++              </header>
++
++              <div className="global-search-compact-grid">
++                {playlistResults.map(
++                  (playlist) => (
++                    <Link
++                      key={playlist.id}
++                      to={`/playlists/${playlist.id}`}
++                      className="global-search-chip-result"
++                    >
++                      <strong>
++                        {playlist.name}
++                      </strong>
++                      <span>
++                        {playlist.itemCount} item{playlist.itemCount === 1 ? '' : 's'}
++                      </span>
++                    </Link>
++                  )
++                )}
++              </div>
++            </section>
++          )}
++
++          {(catalogItems.length > 0 || catalogLoading) && (
++            <section className="global-search-group">
++              <header>
++                <h2>
++                  Wiki / Metadata Catalog
++                </h2>
++                <span>
++                  {catalogLoading
++                    ? 'Searching…'
++                    : catalogItems.length}
++                </span>
++              </header>
++
++              <div className="global-search-results">
++                {catalogItems.map(
++                  (item) => (
++                    <div
++                      key={item.id}
++                      className="global-search-result global-search-catalog-result"
++                    >
++                      <div>
++                        <strong>
++                          {item.canonicalName}
++                        </strong>
++                        <span>
++                          {[item.character, item.category, item.subcategory]
++                            .filter(Boolean)
++                            .join(' · ')}
++                        </span>
++                      </div>
++
++                      <div className="global-search-catalog-actions">
++                        {item.hasFile !== undefined && (
++                          <span className={item.hasFile ? 'search-file-present' : 'search-file-missing'}>
++                            {item.hasFile ? 'Archived' : 'Missing'}
++                          </span>
++                        )}
++                        {item.sourceUrl && (
++                          <a
++                            href={item.sourceUrl}
++                            target="_blank"
++                            rel="noreferrer"
++                          >
++                            Wiki ↗
++                          </a>
++                        )}
++                      </div>
++                    </div>
++                  )
++                )}
++              </div>
++            </section>
++          )}
++        </div>
++      )}
++    </main>
++  )
++}
++
++
++export default GlobalSearchPage
+diff --git a/frontend/src/pages/HomePage.tsx b/frontend/src/pages/HomePage.tsx
+index e075e3b..48fa160 100644
+--- a/frontend/src/pages/HomePage.tsx
++++ b/frontend/src/pages/HomePage.tsx
+@@ -421,24 +421,34 @@ function HomePage() {
+       )
+ 
+ 
+-      setSelectedCharacter(
+-        firstCharacter
+-      )
+-
++      const timeoutId =
++        window.setTimeout(
++          () => {
++            setSelectedCharacter(
++              firstCharacter
++            )
+ 
+-      setMediaIndex(
+-        0
+-      )
++            setMediaIndex(
++              0
++            )
+ 
++            setLoadingMedia(
++              true
++            )
+ 
+-      setLoadingMedia(
+-        true
+-      )
++            setMediaError(
++              ''
++            )
++          },
++          0
++        )
+ 
+ 
+-      setMediaError(
+-        ''
+-      )
++      return () => {
++        window.clearTimeout(
++          timeoutId
++        )
++      }
+ 
+     },
+     [
+@@ -1779,6 +1789,22 @@ function HomePage() {
+         <nav className="home-utility-navigation">
+ 
+ 
++          <Link
++            to="/search"
++            className="home-utility-link"
++          >
++
++            <span className="home-utility-icon">
++              ⌕
++            </span>
++
++            <span>
++              Search
++            </span>
++
++          </Link>
++
++
+           <Link
+             to="/favorites"
+             className="home-utility-link"
+@@ -1859,6 +1885,22 @@ function HomePage() {
+           </Link>
+ 
+ 
++          <Link
++            to="/smart-playlists"
++            className="home-utility-link"
++          >
++
++            <span className="home-utility-icon">
++              ✦
++            </span>
++
++            <span>
++              Smart Playlists
++            </span>
++
++          </Link>
++
++
+           <Link
+             to="/playlists"
+             className="home-utility-link"
+diff --git a/frontend/src/pages/LibraryStatusPage.tsx b/frontend/src/pages/LibraryStatusPage.tsx
+index 2faf084..cf99564 100644
+--- a/frontend/src/pages/LibraryStatusPage.tsx
++++ b/frontend/src/pages/LibraryStatusPage.tsx
+@@ -15,13 +15,14 @@ type CoreLibraryStatus = {
+   libraryRoot: string
+   totalMedia: number
+ 
+-  categories: {
+-    memoria: number
+-    secretTimes: number
+-    myths: number
+-    bond: number
+-    tenderMoments: number
+-  }
++  categories:
++    Record<string, number>
++
++  categoryDefinitions: Array<{
++    key: string
++    label: string
++    stateCategory: string
++  }>
+ 
+   characters:
+     Record<string, number>
+@@ -36,22 +37,6 @@ type CoreLibraryStatus = {
+ }
+ 
+ 
+-type ArchiveItemSummary = {
+-  character?: string | null
+-
+-  mediaType?:
+-    | 'video'
+-    | 'audio'
+-    | 'image'
+-}
+-
+-
+-type ArchiveResponse = {
+-  count: number
+-  items: ArchiveItemSummary[]
+-}
+-
+-
+ type MainStoryResponse = {
+   branchCount: number
+   chapterCount: number
+@@ -103,54 +88,6 @@ type ExtendedLibraryStatus = {
+ }
+ 
+ 
+-type SupplementalSource = {
+-  key:
+-    | 'phoneCalls'
+-    | 'phoneVideos'
+-    | 'illusio'
+-
+-  label: string
+-  endpoint: string
+-}
+-
+-
+-const supplementalSources:
+-  SupplementalSource[] = [
+-    {
+-      key:
+-        'phoneCalls',
+-
+-      label:
+-        'Phone Calls',
+-
+-      endpoint:
+-        '/api/library/phone-calls',
+-    },
+-
+-    {
+-      key:
+-        'phoneVideos',
+-
+-      label:
+-        'Phone Videos',
+-
+-      endpoint:
+-        '/api/library/phone-videos',
+-    },
+-
+-    {
+-      key:
+-        'illusio',
+-
+-      label:
+-        'Illusio',
+-
+-      endpoint:
+-        '/api/library/illusio',
+-    },
+-  ]
+-
+-
+ async function fetchJson<T>(
+   endpoint:
+     string,
+@@ -216,78 +153,18 @@ function addCharacter(
+ }
+ 
+ 
+-function addMediaType(
+-  counts:
+-    ExtendedLibraryStatus['mediaTypes'],
+-  mediaType:
+-    ArchiveItemSummary['mediaType']
+-) {
+-
+-  if (
+-    mediaType ===
+-      'video'
+-  ) {
+-
+-    counts.video +=
+-      1
+-
+-  }
+-
+-
+-  if (
+-    mediaType ===
+-      'audio'
+-  ) {
+-
+-    counts.audio +=
+-      1
+-
+-  }
+-
+-
+-  if (
+-    mediaType ===
+-      'image'
+-  ) {
+-
+-    counts.image +=
+-      1
+-
+-  }
+-
+-}
+-
+-
+ async function fetchLibraryStatus():
+   Promise<ExtendedLibraryStatus> {
+ 
+   const [
+     coreResult,
+-    phoneCallsResult,
+-    phoneVideosResult,
+-    illusioResult,
+     mainStoryResult,
+     galleryResult,
+   ] =
+     await Promise.allSettled([
+       fetchJson<CoreLibraryStatus>(
+         '/api/library-health/status',
+-        'Unable to load core library status.'
+-      ),
+-
+-      fetchJson<ArchiveResponse>(
+-        '/api/library/phone-calls',
+-        'Unable to scan Phone Calls.'
+-      ),
+-
+-      fetchJson<ArchiveResponse>(
+-        '/api/library/phone-videos',
+-        'Unable to scan Phone Videos.'
+-      ),
+-
+-      fetchJson<ArchiveResponse>(
+-        '/api/library/illusio',
+-        'Unable to scan Illusio.'
++        'Unable to load library status.'
+       ),
+ 
+       fetchJson<MainStoryResponse>(
+@@ -321,38 +198,17 @@ async function fetchLibraryStatus():
+ 
+ 
+   const categories:
+-    ExtendedLibraryStatus[
+-      'categories'
+-    ] = {
+-      mainStory:
+-        0,
+-
+-      memoria:
+-        core.categories.memoria,
+-
+-      secretTimes:
+-        core.categories.secretTimes,
+-
+-      myths:
+-        core.categories.myths,
+-
+-      bond:
+-        core.categories.bond,
+-
+-      tenderMoments:
+-        core.categories.tenderMoments,
+-
+-      phoneCalls:
+-        0,
+-
+-      phoneVideos:
+-        0,
+-
+-      illusio:
+-        0,
+-
+-      gallery:
+-        0,
++    ExtendedLibraryStatus['categories'] = {
++      mainStory: 0,
++      memoria: core.categories['memoria'] ?? 0,
++      secretTimes: core.categories['secret-times'] ?? 0,
++      myths: core.categories['myths'] ?? 0,
++      bond: core.categories['bond'] ?? 0,
++      tenderMoments: core.categories['tender-moments'] ?? 0,
++      phoneCalls: core.categories['phone-call'] ?? 0,
++      phoneVideos: core.categories['phone-video'] ?? 0,
++      illusio: core.categories['illusio'] ?? 0,
++      gallery: 0,
+     }
+ 
+ 
+@@ -366,87 +222,16 @@ async function fetchLibraryStatus():
+   }
+ 
+ 
+-  const archiveResults = [
+-    phoneCallsResult,
+-    phoneVideosResult,
+-    illusioResult,
+-  ]
+-
+-
+-  archiveResults.forEach(
+-    (
+-      result,
+-      index
+-    ) => {
+-
+-      const source =
+-        supplementalSources[
+-          index
+-        ]
+-
+-
+-      if (
+-        result.status ===
+-        'rejected'
+-      ) {
+-
+-        warnings.push(
+-          source.label
+-        )
+-
+-
+-        return
+-
+-      }
+-
+-
+-      categories[
+-        source.key
+-      ] =
+-        result.value.count
+-
+-
+-      for (
+-        const item
+-        of result.value.items
+-      ) {
+-
+-        addCharacter(
+-          characters,
+-          item.character
+-        )
+-
+-
+-        addMediaType(
+-          mediaTypes,
+-          item.mediaType
+-        )
+-
+-      }
+-
+-    }
+-  )
+-
+-
+   if (
+     mainStoryResult.status ===
+     'fulfilled'
+   ) {
+ 
+     categories.mainStory =
+-      mainStoryResult
+-        .value
+-        .partCount
++      mainStoryResult.value.partCount
+ 
+-
+-    /*
+-     * Main Story parts are playable video story
+-     * segments in the current archive model.
+-     */
+     mediaTypes.video +=
+-      mainStoryResult
+-        .value
+-        .partCount
++      mainStoryResult.value.partCount
+ 
+   } else {
+ 
+@@ -463,22 +248,14 @@ async function fetchLibraryStatus():
+   ) {
+ 
+     categories.gallery =
+-      galleryResult
+-        .value
+-        .count
+-
++      galleryResult.value.count
+ 
+     mediaTypes.image +=
+-      galleryResult
+-        .value
+-        .count
+-
++      galleryResult.value.count
+ 
+     for (
+       const item
+-      of galleryResult
+-        .value
+-        .items
++      of galleryResult.value.items
+     ) {
+ 
+       addCharacter(
+@@ -505,31 +282,20 @@ async function fetchLibraryStatus():
+         total,
+         count
+       ) =>
+-        total +
+-        count,
++        total + count,
+       0
+     )
+ 
+ 
+   return {
+-    connected:
+-      core.connected,
+-
+-    libraryRoot:
+-      core.libraryRoot,
+-
++    connected: core.connected,
++    libraryRoot: core.libraryRoot,
+     totalMedia,
+-
+     categories,
+-
+     characters,
+-
+     mediaTypes,
+-
+     scannedAt:
+-      new Date()
+-        .toISOString(),
+-
++      new Date().toISOString(),
+     warnings,
+   }
+ 
+diff --git a/frontend/src/pages/SettingsPage.tsx b/frontend/src/pages/SettingsPage.tsx
+index 91e8e7d..20e4ff4 100644
+--- a/frontend/src/pages/SettingsPage.tsx
++++ b/frontend/src/pages/SettingsPage.tsx
+@@ -70,6 +70,23 @@ const settingsGroups:
+             'COVERAGE',
+         },
+ 
++        {
++          to:
++            '/settings/integrity',
++
++          icon:
++            '◉',
++
++          title:
++            'Archive Integrity',
++
++          description:
++            'Create SHA-256 baselines, verify preserved media, detect changed or missing files, and find exact duplicates.',
++
++          tag:
++            'VERIFY',
++        },
++
+         {
+           to:
+             '/settings/file-locations',
+@@ -100,6 +117,23 @@ const settingsGroups:
+         'Manage catalog records, source data, custom metadata, artwork coverage, and generated thumbnails.',
+ 
+       cards: [
++        {
++          to:
++            '/settings/tags',
++
++          icon:
++            '#',
++
++          title:
++            'Tags',
++
++          description:
++            'Manage, rename, merge, delete, and bulk-apply tags across playable archive media.',
++
++          tag:
++            'ORGANIZE',
++        },
++
+         {
+           to:
+             '/settings/catalog',
+diff --git a/frontend/src/pages/SmartPlaylistDetailPage.tsx b/frontend/src/pages/SmartPlaylistDetailPage.tsx
+new file mode 100644
+index 0000000..9247390
+--- /dev/null
++++ b/frontend/src/pages/SmartPlaylistDetailPage.tsx
+@@ -0,0 +1,727 @@
++import {
++  useCallback,
++  useEffect,
++  useMemo,
++  useState,
++} from 'react'
++
++import {
++  Link,
++  useParams,
++} from 'react-router-dom'
++
++import type {
++  ArchiveState,
++} from '../data/archiveState'
++
++import {
++  archiveIndexKey,
++  archiveIndexPlayerUrl,
++  fetchArchiveIndex,
++} from '../data/archiveIndex'
++
++import type {
++  ArchiveIndexItem,
++} from '../data/archiveIndex'
++
++import {
++  fetchSmartPlaylist,
++  updateSmartPlaylist,
++} from '../data/smartPlaylists'
++
++import type {
++  SmartPlaylist,
++  SmartPlaylistRules,
++} from '../data/smartPlaylists'
++
++import {
++  MediaTagChips,
++} from '../components/MediaTagControls'
++
++import {
++  useMediaTags,
++} from '../data/mediaTags'
++
++
++function stateKey(
++  category: string,
++  relativePath: string
++) {
++  return `${category}\u0000${relativePath}`
++}
++
++
++function matchesRules(
++  item: ArchiveIndexItem,
++  state: ArchiveState | undefined,
++  tags: string[],
++  rules: SmartPlaylistRules
++) {
++  if (
++    rules.characters.length > 0 &&
++    !rules.characters.includes(
++      item.character
++    )
++  ) {
++    return false
++  }
++
++  if (
++    rules.categories.length > 0 &&
++    !rules.categories.includes(
++      item.archiveCategory
++    )
++  ) {
++    return false
++  }
++
++  if (
++    rules.tags.length > 0
++  ) {
++    const normalizedTags =
++      new Set(
++        tags.map(
++          (tag) =>
++            tag.toLocaleLowerCase()
++        )
++      )
++
++    const tagMatches =
++      rules.tags.map(
++        (tag) =>
++          normalizedTags.has(
++            tag.toLocaleLowerCase()
++          )
++      )
++
++    if (
++      rules.tagMode === 'all'
++        ? tagMatches.some(
++            (match) =>
++              !match
++          )
++        : !tagMatches.some(Boolean)
++    ) {
++      return false
++    }
++  }
++
++  if (
++    rules.favoriteOnly &&
++    !state?.favorite
++  ) {
++    return false
++  }
++
++  if (
++    rules.minRating !== null &&
++    (
++      state?.rating === null ||
++      state?.rating === undefined ||
++      state.rating <
++        rules.minRating
++    )
++  ) {
++    return false
++  }
++
++  if (
++    rules.status === 'completed' &&
++    !state?.completed
++  ) {
++    return false
++  }
++
++  if (
++    rules.status === 'in-progress' &&
++    !(
++      state &&
++      !state.completed &&
++      state.progressSeconds > 0
++    )
++  ) {
++    return false
++  }
++
++  if (
++    rules.status === 'unwatched' &&
++    state &&
++    (
++      state.completed ||
++      state.progressSeconds > 0 ||
++      state.playCount > 0
++    )
++  ) {
++    return false
++  }
++
++  return true
++}
++
++
++function SmartPlaylistDetailPage() {
++  const {
++    id,
++  } = useParams()
++
++  const numericId =
++    Number(id)
++
++  const {
++    tagsFor,
++  } = useMediaTags()
++
++  const [
++    playlist,
++    setPlaylist,
++  ] = useState<SmartPlaylist | null>(
++    null
++  )
++
++  const [
++    media,
++    setMedia,
++  ] = useState<ArchiveIndexItem[]>([])
++
++  const [
++    states,
++    setStates,
++  ] = useState<
++    Record<string, ArchiveState>
++  >({})
++
++  const [
++    loading,
++    setLoading,
++  ] = useState(true)
++
++  const [
++    error,
++    setError,
++  ] = useState('')
++
++  const [
++    editing,
++    setEditing,
++  ] = useState(false)
++
++  const [
++    draftName,
++    setDraftName,
++  ] = useState('')
++
++  const [
++    draftRules,
++    setDraftRules,
++  ] = useState<SmartPlaylistRules | null>(
++    null
++  )
++
++
++  const load =
++    useCallback(
++      async () => {
++        if (!Number.isInteger(numericId)) {
++          setError(
++            'Invalid smart playlist ID.'
++          )
++          setLoading(false)
++          return
++        }
++
++        try {
++          setLoading(true)
++
++          const [
++            loadedPlaylist,
++            archiveResult,
++            stateResponse,
++          ] = await Promise.all([
++            fetchSmartPlaylist(
++              numericId
++            ),
++            fetchArchiveIndex(),
++            fetch(
++              '/api/archive/states'
++            ),
++          ])
++
++          if (!stateResponse.ok) {
++            throw new Error(
++              'Unable to load watch state.'
++            )
++          }
++
++          const stateData =
++            await stateResponse.json() as {
++              items?: ArchiveState[]
++            }
++
++          const stateMap:
++            Record<string, ArchiveState> = {}
++
++          for (
++            const state
++            of stateData.items ?? []
++          ) {
++            stateMap[
++              stateKey(
++                state.category,
++                state.relativePath
++              )
++            ] = state
++          }
++
++          setPlaylist(
++            loadedPlaylist
++          )
++          setDraftName(
++            loadedPlaylist.name
++          )
++          setDraftRules({
++            ...loadedPlaylist.rules,
++            characters: [
++              ...loadedPlaylist.rules.characters,
++            ],
++            categories: [
++              ...loadedPlaylist.rules.categories,
++            ],
++            tags: [
++              ...loadedPlaylist.rules.tags,
++            ],
++          })
++          setMedia(
++            archiveResult.items
++          )
++          setStates(stateMap)
++          setError('')
++        } catch (
++          loadError
++        ) {
++          setError(
++            loadError instanceof Error
++              ? loadError.message
++              : 'Unable to load smart playlist.'
++          )
++        } finally {
++          setLoading(false)
++        }
++      },
++      [numericId]
++    )
++
++
++  useEffect(
++    () => {
++      const timer =
++        window.setTimeout(
++          () => {
++            void load()
++          },
++          0
++        )
++
++      return () =>
++        window.clearTimeout(timer)
++    },
++    [load]
++  )
++
++
++  const matched =
++    useMemo(
++      () => {
++        if (!playlist) {
++          return []
++        }
++
++        return media.filter(
++          (item) =>
++            matchesRules(
++              item,
++              states[
++                stateKey(
++                  item.archiveCategory,
++                  item.relativePath
++                )
++              ],
++              tagsFor(
++                item.archiveCategory,
++                item.relativePath
++              ),
++              playlist.rules
++            )
++        )
++      },
++      [
++        media,
++        playlist,
++        states,
++        tagsFor,
++      ]
++    )
++
++
++  async function saveRules() {
++    if (
++      !playlist ||
++      !draftRules ||
++      !draftName.trim()
++    ) {
++      return
++    }
++
++    try {
++      const saved =
++        await updateSmartPlaylist(
++          playlist.id,
++          draftName,
++          draftRules
++        )
++
++      setPlaylist(saved)
++      setDraftName(saved.name)
++      setDraftRules({
++        ...saved.rules,
++        characters: [...saved.rules.characters],
++        categories: [...saved.rules.categories],
++        tags: [...saved.rules.tags],
++      })
++      setEditing(false)
++      setError('')
++    } catch (
++      saveError
++    ) {
++      setError(
++        saveError instanceof Error
++          ? saveError.message
++          : 'Unable to save smart playlist.'
++      )
++    }
++  }
++
++
++  if (loading) {
++    return (
++      <main className="archive-page">
++        Loading smart playlist…
++      </main>
++    )
++  }
++
++  if (
++    error &&
++    !playlist
++  ) {
++    return (
++      <main className="archive-page">
++        <Link
++          to="/smart-playlists"
++          className="back-button"
++        >
++          ‹
++        </Link>
++        <section className="settings-status-error">
++          {error}
++        </section>
++      </main>
++    )
++  }
++
++  if (!playlist) {
++    return null
++  }
++
++
++  return (
++    <main className="archive-page smart-playlist-detail-page">
++      <header className="archive-page-header">
++        <Link
++          to="/smart-playlists"
++          className="back-button"
++        >
++          ‹
++        </Link>
++        <div>
++          <span className="archive-eyebrow">
++            SMART PLAYLIST
++          </span>
++          <h1>
++            {playlist.name}
++          </h1>
++        </div>
++        <button
++          type="button"
++          className="library-rescan-button"
++          onClick={() =>
++            setEditing(
++              (current) =>
++                !current
++            )
++          }
++        >
++          {editing
++            ? 'Close Rules'
++            : 'Edit Rules'}
++        </button>
++      </header>
++
++      {error && (
++        <section className="settings-status-error">
++          {error}
++        </section>
++      )}
++
++      {editing && draftRules && (
++        <section className="smart-playlist-edit-panel">
++          <label>
++            <span>Name</span>
++            <input
++              value={draftName}
++              onChange={(event) =>
++                setDraftName(event.target.value)
++              }
++            />
++          </label>
++
++          <label>
++            <span>Characters (comma separated)</span>
++            <input
++              value={draftRules.characters.join(', ')}
++              onChange={(event) =>
++                setDraftRules({
++                  ...draftRules,
++                  characters:
++                    event.target.value
++                      .split(',')
++                      .map((value) => value.trim())
++                      .filter(Boolean),
++                })
++              }
++            />
++          </label>
++
++          <label>
++            <span>Categories (comma separated)</span>
++            <input
++              value={draftRules.categories.join(', ')}
++              onChange={(event) =>
++                setDraftRules({
++                  ...draftRules,
++                  categories:
++                    event.target.value
++                      .split(',')
++                      .map((value) => value.trim())
++                      .filter(Boolean),
++                })
++              }
++            />
++          </label>
++
++          <label>
++            <span>Tags (comma separated)</span>
++            <input
++              value={draftRules.tags.join(', ')}
++              onChange={(event) =>
++                setDraftRules({
++                  ...draftRules,
++                  tags:
++                    event.target.value
++                      .split(',')
++                      .map((value) => value.trim())
++                      .filter(Boolean),
++                })
++              }
++            />
++          </label>
++
++          <label>
++            <span>Tag matching</span>
++            <select
++              value={draftRules.tagMode}
++              onChange={(event) =>
++                setDraftRules({
++                  ...draftRules,
++                  tagMode:
++                    event.target.value === 'all'
++                      ? 'all'
++                      : 'any',
++                })
++              }
++            >
++              <option value="any">
++                Any selected tag
++              </option>
++              <option value="all">
++                All selected tags
++              </option>
++            </select>
++          </label>
++
++          <label>
++            <span>Watch status</span>
++            <select
++              value={draftRules.status}
++              onChange={(event) =>
++                setDraftRules({
++                  ...draftRules,
++                  status:
++                    event.target.value as
++                      SmartPlaylistRules['status'],
++                })
++              }
++            >
++              <option value="any">Any</option>
++              <option value="unwatched">Unwatched</option>
++              <option value="in-progress">In progress</option>
++              <option value="completed">Completed</option>
++            </select>
++          </label>
++
++          <label>
++            <span>Minimum rating</span>
++            <select
++              value={draftRules.minRating ?? ''}
++              onChange={(event) =>
++                setDraftRules({
++                  ...draftRules,
++                  minRating:
++                    event.target.value
++                      ? Number(event.target.value)
++                      : null,
++                })
++              }
++            >
++              <option value="">Any</option>
++              {[5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5].map(
++                (value) => (
++                  <option
++                    key={value}
++                    value={value}
++                  >
++                    {value}★+
++                  </option>
++                )
++              )}
++            </select>
++          </label>
++
++          <label className="smart-playlist-checkbox">
++            <input
++              type="checkbox"
++              checked={draftRules.favoriteOnly}
++              onChange={(event) =>
++                setDraftRules({
++                  ...draftRules,
++                  favoriteOnly:
++                    event.target.checked,
++                })
++              }
++            />
++            <span>Favorites only</span>
++          </label>
++
++          <button
++            type="button"
++            className="smart-playlist-create-button"
++            onClick={() =>
++              void saveRules()
++            }
++          >
++            Save Rules
++          </button>
++        </section>
++      )}
++
++      <section className="smart-playlist-results-heading">
++        <div>
++          <strong>
++            {matched.length}
++          </strong>
++          <span>
++            matching media item{matched.length === 1 ? '' : 's'}
++          </span>
++        </div>
++        <p>
++          This list is generated live. Nothing is copied into the playlist.
++        </p>
++      </section>
++
++      {matched.length === 0 ? (
++        <section className="archive-feedback-panel">
++          <h2>
++            Nothing matches these rules yet.
++          </h2>
++          <p>
++            Change the rules, add tags, rate items, or add new archive media and this collection will update automatically.
++          </p>
++        </section>
++      ) : (
++        <section className="smart-playlist-result-list">
++          {matched.map(
++            (item) => {
++              const itemTags =
++                tagsFor(
++                  item.archiveCategory,
++                  item.relativePath
++                )
++
++              const state =
++                states[
++                  stateKey(
++                    item.archiveCategory,
++                    item.relativePath
++                  )
++                ]
++
++              return (
++                <Link
++                  key={
++                    archiveIndexKey(
++                      item.archiveCategory,
++                      item.relativePath
++                    )
++                  }
++                  to={
++                    archiveIndexPlayerUrl(
++                      item
++                    )
++                  }
++                  className="smart-playlist-result-row"
++                >
++                  <div>
++                    <strong>
++                      {item.title}
++                    </strong>
++                    <span>
++                      {[item.character, item.archiveCategory]
++                        .filter(Boolean)
++                        .join(' · ')}
++                    </span>
++                    <MediaTagChips
++                      tags={itemTags}
++                    />
++                  </div>
++                  <div className="smart-playlist-result-state">
++                    {state?.favorite && (
++                      <span>♡ Favorite</span>
++                    )}
++                    {state?.rating && (
++                      <span>{state.rating}★</span>
++                    )}
++                    {state?.completed && (
++                      <span>Completed</span>
++                    )}
++                  </div>
++                </Link>
++              )
++            }
++          )}
++        </section>
++      )}
++    </main>
++  )
++}
++
++
++export default SmartPlaylistDetailPage
+diff --git a/frontend/src/pages/SmartPlaylistsPage.tsx b/frontend/src/pages/SmartPlaylistsPage.tsx
+new file mode 100644
+index 0000000..6834314
+--- /dev/null
++++ b/frontend/src/pages/SmartPlaylistsPage.tsx
+@@ -0,0 +1,608 @@
++import {
++  useCallback,
++  useEffect,
++  useState,
++} from 'react'
++
++import {
++  Link,
++  useNavigate,
++} from 'react-router-dom'
++
++import {
++  createSmartPlaylist,
++  deleteSmartPlaylist,
++  emptySmartPlaylistRules,
++  fetchSmartPlaylists,
++} from '../data/smartPlaylists'
++
++import type {
++  SmartPlaylist,
++  SmartPlaylistRules,
++} from '../data/smartPlaylists'
++
++import {
++  personalArchiveSources,
++} from '../data/personalArchive'
++
++import {
++  useArchiveCharacters,
++} from '../hooks/useArchiveCharacters'
++
++import {
++  useMediaTags,
++} from '../data/mediaTags'
++
++
++function parseTags(
++  value: string
++) {
++  return value
++    .split(',')
++    .map(
++      (tag) =>
++        tag.trim()
++    )
++    .filter(Boolean)
++}
++
++
++function describeRules(
++  rules: SmartPlaylistRules
++) {
++  const parts:
++    string[] = []
++
++  if (
++    rules.characters.length > 0
++  ) {
++    parts.push(
++      rules.characters.join(', ')
++    )
++  }
++
++  if (
++    rules.categories.length > 0
++  ) {
++    parts.push(
++      rules.categories.join(', ')
++    )
++  }
++
++  if (
++    rules.tags.length > 0
++  ) {
++    parts.push(
++      `${rules.tagMode === 'all' ? 'all' : 'any'} tags: ${rules.tags.join(', ')}`
++    )
++  }
++
++  if (rules.favoriteOnly) {
++    parts.push('favorites')
++  }
++
++  if (rules.status !== 'any') {
++    parts.push(rules.status)
++  }
++
++  if (rules.minRating) {
++    parts.push(
++      `${rules.minRating}★+`
++    )
++  }
++
++  return parts.length > 0
++    ? parts.join(' · ')
++    : 'All playable media'
++}
++
++
++function SmartPlaylistsPage() {
++  const navigate =
++    useNavigate()
++
++  const {
++    characters,
++  } = useArchiveCharacters()
++
++  const {
++    tags,
++  } = useMediaTags()
++
++  const [
++    playlists,
++    setPlaylists,
++  ] = useState<SmartPlaylist[]>([])
++
++  const [
++    loading,
++    setLoading,
++  ] = useState(true)
++
++  const [
++    error,
++    setError,
++  ] = useState('')
++
++  const [
++    creating,
++    setCreating,
++  ] = useState(false)
++
++  const [
++    name,
++    setName,
++  ] = useState('')
++
++  const [
++    character,
++    setCharacter,
++  ] = useState('Any')
++
++  const [
++    category,
++    setCategory,
++  ] = useState('Any')
++
++  const [
++    tagText,
++    setTagText,
++  ] = useState('')
++
++  const [
++    tagMode,
++    setTagMode,
++  ] = useState<'any' | 'all'>('any')
++
++  const [
++    status,
++    setStatus,
++  ] = useState<SmartPlaylistRules['status']>('any')
++
++  const [
++    minRating,
++    setMinRating,
++  ] = useState('')
++
++  const [
++    favoriteOnly,
++    setFavoriteOnly,
++  ] = useState(false)
++
++
++  const load =
++    useCallback(
++      async () => {
++        try {
++          setLoading(true)
++          setPlaylists(
++            await fetchSmartPlaylists()
++          )
++          setError('')
++        } catch (
++          loadError
++        ) {
++          setError(
++            loadError instanceof Error
++              ? loadError.message
++              : 'Unable to load smart playlists.'
++          )
++        } finally {
++          setLoading(false)
++        }
++      },
++      []
++    )
++
++
++  useEffect(
++    () => {
++      const timer =
++        window.setTimeout(
++          () => {
++            void load()
++          },
++          0
++        )
++
++      return () =>
++        window.clearTimeout(timer)
++    },
++    [load]
++  )
++
++
++  async function create() {
++    const cleanedName =
++      name.trim()
++
++    if (!cleanedName) {
++      return
++    }
++
++    const rating =
++      minRating
++        ? Number(minRating)
++        : null
++
++    const rules:
++      SmartPlaylistRules = {
++        ...emptySmartPlaylistRules,
++        characters:
++          character === 'Any'
++            ? []
++            : [character],
++        categories:
++          category === 'Any'
++            ? []
++            : [category],
++        tags:
++          parseTags(tagText),
++        tagMode,
++        favoriteOnly,
++        status,
++        minRating:
++          rating &&
++          Number.isFinite(rating)
++            ? rating
++            : null,
++      }
++
++    try {
++      setCreating(true)
++      setError('')
++
++      const created =
++        await createSmartPlaylist(
++          cleanedName,
++          rules
++        )
++
++      navigate(
++        `/smart-playlists/${created.id}`
++      )
++    } catch (
++      createError
++    ) {
++      setError(
++        createError instanceof Error
++          ? createError.message
++          : 'Unable to create smart playlist.'
++      )
++    } finally {
++      setCreating(false)
++    }
++  }
++
++
++  async function remove(
++    playlist: SmartPlaylist
++  ) {
++    if (
++      !window.confirm(
++        `Delete smart playlist “${playlist.name}”? Your media and tags are not changed.`
++      )
++    ) {
++      return
++    }
++
++    try {
++      await deleteSmartPlaylist(
++        playlist.id
++      )
++      setPlaylists(
++        (current) =>
++          current.filter(
++            (candidate) =>
++              candidate.id !==
++              playlist.id
++          )
++      )
++    } catch (
++      deleteError
++    ) {
++      setError(
++        deleteError instanceof Error
++          ? deleteError.message
++          : 'Unable to delete smart playlist.'
++      )
++    }
++  }
++
++
++  const categories =
++    personalArchiveSources.map(
++      (source) =>
++        source.category
++    )
++
++
++  return (
++    <main className="archive-page smart-playlists-page">
++      <header className="archive-page-header">
++        <Link
++          to="/"
++          className="back-button"
++        >
++          ‹
++        </Link>
++        <div>
++          <span className="archive-eyebrow">
++            PERSONAL LIBRARY
++          </span>
++          <h1>
++            Smart Playlists
++          </h1>
++        </div>
++      </header>
++
++      <section className="smart-playlist-builder">
++        <div className="smart-playlist-builder-heading">
++          <div>
++            <span className="archive-eyebrow">
++              AUTOMATIC COLLECTION
++            </span>
++            <h2>
++              Create from rules
++            </h2>
++            <p>
++              Smart playlists update automatically as your media, tags, favorites, ratings, and watch state change.
++            </p>
++          </div>
++        </div>
++
++        <div className="smart-playlist-form-grid">
++          <label>
++            <span>Name</span>
++            <input
++              value={name}
++              placeholder="Caleb Comfort"
++              onChange={(event) =>
++                setName(event.target.value)
++              }
++            />
++          </label>
++
++          <label>
++            <span>Character</span>
++            <select
++              value={character}
++              onChange={(event) =>
++                setCharacter(event.target.value)
++              }
++            >
++              <option value="Any">
++                Any character
++              </option>
++              {characters.map(
++                (value) => (
++                  <option
++                    key={value}
++                    value={value}
++                  >
++                    {value}
++                  </option>
++                )
++              )}
++            </select>
++          </label>
++
++          <label>
++            <span>Category</span>
++            <select
++              value={category}
++              onChange={(event) =>
++                setCategory(event.target.value)
++              }
++            >
++              <option value="Any">
++                Any category
++              </option>
++              {categories.map(
++                (value) => (
++                  <option
++                    key={value}
++                    value={value}
++                  >
++                    {value}
++                  </option>
++                )
++              )}
++            </select>
++          </label>
++
++          <label className="smart-playlist-tags-field">
++            <span>Tags</span>
++            <input
++              list="smart-playlist-tags"
++              value={tagText}
++              placeholder="Comfort, Funny"
++              onChange={(event) =>
++                setTagText(event.target.value)
++              }
++            />
++            <datalist id="smart-playlist-tags">
++              {tags.map(
++                (tag) => (
++                  <option
++                    key={tag.name}
++                    value={tag.name}
++                  />
++                )
++              )}
++            </datalist>
++          </label>
++
++          <label>
++            <span>Tag matching</span>
++            <select
++              value={tagMode}
++              onChange={(event) =>
++                setTagMode(
++                  event.target.value === 'all'
++                    ? 'all'
++                    : 'any'
++                )
++              }
++            >
++              <option value="any">
++                Any selected tag
++              </option>
++              <option value="all">
++                All selected tags
++              </option>
++            </select>
++          </label>
++
++          <label>
++            <span>Watch status</span>
++            <select
++              value={status}
++              onChange={(event) =>
++                setStatus(
++                  event.target.value as
++                    SmartPlaylistRules['status']
++                )
++              }
++            >
++              <option value="any">
++                Any status
++              </option>
++              <option value="unwatched">
++                Unwatched
++              </option>
++              <option value="in-progress">
++                In progress
++              </option>
++              <option value="completed">
++                Completed
++              </option>
++            </select>
++          </label>
++
++          <label>
++            <span>Minimum rating</span>
++            <select
++              value={minRating}
++              onChange={(event) =>
++                setMinRating(event.target.value)
++              }
++            >
++              <option value="">
++                Any rating
++              </option>
++              {[5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5].map(
++                (value) => (
++                  <option
++                    key={value}
++                    value={value}
++                  >
++                    {value}★+
++                  </option>
++                )
++              )}
++            </select>
++          </label>
++
++          <label className="smart-playlist-checkbox">
++            <input
++              type="checkbox"
++              checked={favoriteOnly}
++              onChange={(event) =>
++                setFavoriteOnly(
++                  event.target.checked
++                )
++              }
++            />
++            <span>
++              Favorites only
++            </span>
++          </label>
++        </div>
++
++        <button
++          type="button"
++          className="smart-playlist-create-button"
++          disabled={
++            creating ||
++            !name.trim()
++          }
++          onClick={() =>
++            void create()
++          }
++        >
++          {creating
++            ? 'Creating…'
++            : '+ Create Smart Playlist'}
++        </button>
++      </section>
++
++      {error && (
++        <section className="settings-status-error">
++          {error}
++        </section>
++      )}
++
++      <section className="smart-playlist-library">
++        <header>
++          <div>
++            <span className="archive-eyebrow">
++              SAVED RULES
++            </span>
++            <h2>
++              Your smart playlists
++            </h2>
++          </div>
++        </header>
++
++        {loading ? (
++          <p>
++            Loading smart playlists…
++          </p>
++        ) : playlists.length === 0 ? (
++          <p className="smart-playlist-empty">
++            No smart playlists yet.
++          </p>
++        ) : (
++          <div className="smart-playlist-grid">
++            {playlists.map(
++              (playlist) => (
++                <article
++                  key={playlist.id}
++                  className="smart-playlist-card"
++                >
++                  <Link
++                    to={`/smart-playlists/${playlist.id}`}
++                  >
++                    <span className="archive-eyebrow">
++                      SMART PLAYLIST
++                    </span>
++                    <h3>
++                      {playlist.name}
++                    </h3>
++                    <p>
++                      {describeRules(
++                        playlist.rules
++                      )}
++                    </p>
++                  </Link>
++                  <button
++                    type="button"
++                    onClick={() =>
++                      void remove(playlist)
++                    }
++                  >
++                    Delete
++                  </button>
++                </article>
++              )
++            )}
++          </div>
++        )}
++      </section>
++    </main>
++  )
++}
++
++
++export default SmartPlaylistsPage
+diff --git a/frontend/src/pages/TagManagerPage.tsx b/frontend/src/pages/TagManagerPage.tsx
+new file mode 100644
+index 0000000..19e331d
+--- /dev/null
++++ b/frontend/src/pages/TagManagerPage.tsx
+@@ -0,0 +1,735 @@
++import {
++  useCallback,
++  useEffect,
++  useMemo,
++  useState,
++} from 'react'
++
++import {
++  Link,
++  useSearchParams,
++} from 'react-router-dom'
++
++import {
++  archiveIndexKey,
++  archiveIndexPlayerUrl,
++  fetchArchiveIndex,
++} from '../data/archiveIndex'
++
++import type {
++  ArchiveIndexItem,
++} from '../data/archiveIndex'
++
++import {
++  bulkUpdateMediaTags,
++  deleteMediaTag,
++  renameMediaTag,
++  useMediaTags,
++} from '../data/mediaTags'
++
++import {
++  MediaTagChips,
++} from '../components/MediaTagControls'
++
++
++function parseTagList(
++  value: string
++) {
++  return value
++    .split(',')
++    .map(
++      (tag) =>
++        tag.trim()
++    )
++    .filter(Boolean)
++}
++
++
++function TagManagerPage() {
++  const [
++    searchParams,
++  ] = useSearchParams()
++
++  const {
++    tags,
++    tagsFor,
++    refresh,
++  } = useMediaTags()
++
++  const [
++    items,
++    setItems,
++  ] = useState<ArchiveIndexItem[]>([])
++
++  const [
++    loading,
++    setLoading,
++  ] = useState(true)
++
++  const [
++    error,
++    setError,
++  ] = useState('')
++
++  const [
++    searchText,
++    setSearchText,
++  ] = useState('')
++
++  const [
++    tagFilter,
++    setTagFilter,
++  ] = useState(
++    searchParams.get('tag') ??
++    'All'
++  )
++
++  const [
++    selected,
++    setSelected,
++  ] = useState<Set<string>>(
++    new Set()
++  )
++
++  const [
++    bulkTags,
++    setBulkTags,
++  ] = useState('')
++
++  const [
++    savingBulk,
++    setSavingBulk,
++  ] = useState(false)
++
++  const [
++    actionError,
++    setActionError,
++  ] = useState('')
++
++  const [
++    actionMessage,
++    setActionMessage,
++  ] = useState('')
++
++
++  const loadItems =
++    useCallback(
++      async () => {
++        try {
++          setLoading(true)
++
++          const result =
++            await fetchArchiveIndex()
++
++          setItems(
++            result.items
++          )
++
++          const warnings =
++            Object.values(
++              result.sourceErrors
++            )
++
++          setError(
++            warnings.join(' ')
++          )
++        } catch (
++          loadError
++        ) {
++          setError(
++            loadError instanceof Error
++              ? loadError.message
++              : 'Unable to load archive media.'
++          )
++        } finally {
++          setLoading(false)
++        }
++      },
++      []
++    )
++
++
++  useEffect(
++    () => {
++      const timeoutId =
++        window.setTimeout(
++          () => {
++            void loadItems()
++          },
++          0
++        )
++
++      return () => {
++        window.clearTimeout(
++          timeoutId
++        )
++      }
++    },
++    [loadItems]
++  )
++
++
++  const visibleItems =
++    useMemo(
++      () => {
++        const search =
++          searchText
++            .trim()
++            .toLocaleLowerCase()
++
++        return items.filter(
++          (item) => {
++            const itemTags =
++              tagsFor(
++                item.archiveCategory,
++                item.relativePath
++              )
++
++            if (
++              tagFilter !== 'All' &&
++              !itemTags.some(
++                (tag) =>
++                  tag.toLocaleLowerCase() ===
++                  tagFilter.toLocaleLowerCase()
++              )
++            ) {
++              return false
++            }
++
++            if (!search) {
++              return true
++            }
++
++            return [
++              item.title,
++              item.character,
++              item.archiveCategory,
++              item.relativePath,
++              ...itemTags,
++            ]
++              .join(' ')
++              .toLocaleLowerCase()
++              .includes(search)
++          }
++        )
++      },
++      [
++        items,
++        searchText,
++        tagFilter,
++        tagsFor,
++      ]
++    )
++
++
++  function toggleSelected(
++    item: ArchiveIndexItem
++  ) {
++    const key =
++      archiveIndexKey(
++        item.archiveCategory,
++        item.relativePath
++      )
++
++    setSelected(
++      (current) => {
++        const next =
++          new Set(current)
++
++        if (next.has(key)) {
++          next.delete(key)
++        } else {
++          next.add(key)
++        }
++
++        return next
++      }
++    )
++  }
++
++
++  function selectVisible() {
++    setSelected(
++      new Set(
++        visibleItems.map(
++          (item) =>
++            archiveIndexKey(
++              item.archiveCategory,
++              item.relativePath
++            )
++        )
++      )
++    )
++  }
++
++
++  const selectedItems =
++    useMemo(
++      () =>
++        items.filter(
++          (item) =>
++            selected.has(
++              archiveIndexKey(
++                item.archiveCategory,
++                item.relativePath
++              )
++            )
++        ),
++      [items, selected]
++    )
++
++
++  async function runBulk(
++    mode: 'add' | 'remove'
++  ) {
++    const requestedTags =
++      parseTagList(
++        bulkTags
++      )
++
++    if (
++      selectedItems.length === 0 ||
++      requestedTags.length === 0
++    ) {
++      setActionError(
++        'Select at least one media item and enter at least one tag.'
++      )
++      return
++    }
++
++    try {
++      setSavingBulk(true)
++      setActionError('')
++      setActionMessage('')
++
++      await bulkUpdateMediaTags(
++        selectedItems.map(
++          (item) => ({
++            category:
++              item.archiveCategory,
++            relativePath:
++              item.relativePath,
++          })
++        ),
++        mode === 'add'
++          ? {
++              addTags:
++                requestedTags,
++            }
++          : {
++              removeTags:
++                requestedTags,
++            }
++      )
++
++      setActionMessage(
++        `${mode === 'add' ? 'Updated' : 'Removed tags from'} ${selectedItems.length} media item${selectedItems.length === 1 ? '' : 's'}.`
++      )
++      setBulkTags('')
++    } catch (
++      bulkError
++    ) {
++      setActionError(
++        bulkError instanceof Error
++          ? bulkError.message
++          : 'Unable to update tags.'
++      )
++    } finally {
++      setSavingBulk(false)
++    }
++  }
++
++
++  async function renameTag(
++    currentName: string
++  ) {
++    const newName =
++      window.prompt(
++        `Rename or merge “${currentName}” into:`,
++        currentName
++      )
++
++    if (
++      !newName ||
++      !newName.trim()
++    ) {
++      return
++    }
++
++    try {
++      setActionError('')
++      await renameMediaTag(
++        currentName,
++        newName
++      )
++      setActionMessage(
++        `Tag updated to “${newName.trim()}”.`
++      )
++    } catch (
++      renameError
++    ) {
++      setActionError(
++        renameError instanceof Error
++          ? renameError.message
++          : 'Unable to rename tag.'
++      )
++    }
++  }
++
++
++  async function removeTag(
++    name: string
++  ) {
++    if (
++      !window.confirm(
++        `Delete the “${name}” tag from every media item?`
++      )
++    ) {
++      return
++    }
++
++    try {
++      setActionError('')
++      await deleteMediaTag(
++        name
++      )
++      setActionMessage(
++        `Deleted “${name}”.`
++      )
++
++      if (
++        tagFilter === name
++      ) {
++        setTagFilter('All')
++      }
++    } catch (
++      deleteError
++    ) {
++      setActionError(
++        deleteError instanceof Error
++          ? deleteError.message
++          : 'Unable to delete tag.'
++      )
++    }
++  }
++
++
++  return (
++    <main className="archive-page tag-manager-page">
++      <header className="archive-page-header">
++        <Link
++          to="/settings"
++          className="back-button"
++        >
++          ‹
++        </Link>
++
++        <div>
++          <span className="archive-eyebrow">
++            ORGANIZATION
++          </span>
++          <h1>
++            Tags
++          </h1>
++        </div>
++
++        <button
++          type="button"
++          className="library-rescan-button"
++          onClick={() => {
++            void Promise.all([
++              loadItems(),
++              refresh(),
++            ])
++          }}
++        >
++          Refresh
++        </button>
++      </header>
++
++      <section className="tag-manager-summary">
++        <div>
++          <strong>
++            {tags.length}
++          </strong>
++          <span>
++            tags
++          </span>
++        </div>
++        <div>
++          <strong>
++            {items.length}
++          </strong>
++          <span>
++            playable media items
++          </span>
++        </div>
++        <div>
++          <strong>
++            {selected.size}
++          </strong>
++          <span>
++            selected
++          </span>
++        </div>
++      </section>
++
++      {(error || actionError || actionMessage) && (
++        <section
++          className={
++            actionError
++              ? 'settings-status-error'
++              : 'settings-status-success'
++          }
++        >
++          {actionError || actionMessage || error}
++        </section>
++      )}
++
++      <section className="tag-manager-panel">
++        <div className="tag-manager-panel-heading">
++          <div>
++            <span className="archive-eyebrow">
++              TAG LIBRARY
++            </span>
++            <h2>
++              Manage tags
++            </h2>
++            <p>
++              Rename a tag, merge it into an existing tag, or remove it everywhere.
++            </p>
++          </div>
++        </div>
++
++        {tags.length === 0 ? (
++          <p className="tag-manager-empty">
++            No tags yet. Add tags to media or use the bulk controls below.
++          </p>
++        ) : (
++          <div className="tag-manager-tag-list">
++            {tags.map(
++              (tag) => (
++                <div
++                  key={tag.name}
++                  className="tag-manager-tag-row"
++                >
++                  <button
++                    type="button"
++                    className="tag-manager-tag-name"
++                    onClick={() =>
++                      setTagFilter(
++                        tag.name
++                      )
++                    }
++                  >
++                    {tag.name}
++                  </button>
++                  <span>
++                    {tag.count} use{tag.count === 1 ? '' : 's'}
++                  </span>
++                  <button
++                    type="button"
++                    onClick={() =>
++                      void renameTag(
++                        tag.name
++                      )
++                    }
++                  >
++                    Rename / Merge
++                  </button>
++                  <button
++                    type="button"
++                    className="tag-manager-danger"
++                    onClick={() =>
++                      void removeTag(
++                        tag.name
++                      )
++                    }
++                  >
++                    Delete
++                  </button>
++                </div>
++              )
++            )}
++          </div>
++        )}
++      </section>
++
++      <section className="tag-manager-panel">
++        <div className="tag-manager-panel-heading">
++          <div>
++            <span className="archive-eyebrow">
++              BULK TAGGING
++            </span>
++            <h2>
++              Tag multiple media items
++            </h2>
++          </div>
++
++          <div className="tag-manager-selection-actions">
++            <button
++              type="button"
++              onClick={selectVisible}
++            >
++              Select visible ({visibleItems.length})
++            </button>
++            <button
++              type="button"
++              onClick={() =>
++                setSelected(
++                  new Set()
++                )
++              }
++            >
++              Clear selection
++            </button>
++          </div>
++        </div>
++
++        <div className="tag-manager-filters">
++          <input
++            type="search"
++            value={searchText}
++            placeholder="Search title, character, category, path, or tag"
++            onChange={(event) =>
++              setSearchText(
++                event.target.value
++              )
++            }
++          />
++
++          <select
++            value={tagFilter}
++            onChange={(event) =>
++              setTagFilter(
++                event.target.value
++              )
++            }
++          >
++            <option value="All">
++              All tags
++            </option>
++            {tags.map(
++              (tag) => (
++                <option
++                  key={tag.name}
++                  value={tag.name}
++                >
++                  {tag.name} ({tag.count})
++                </option>
++              )
++            )}
++          </select>
++        </div>
++
++        <div className="tag-manager-bulk-controls">
++          <input
++            type="text"
++            value={bulkTags}
++            placeholder="Tags separated by commas"
++            onChange={(event) =>
++              setBulkTags(
++                event.target.value
++              )
++            }
++          />
++          <button
++            type="button"
++            disabled={
++              savingBulk ||
++              selected.size === 0
++            }
++            onClick={() =>
++              void runBulk('add')
++            }
++          >
++            Add tags
++          </button>
++          <button
++            type="button"
++            disabled={
++              savingBulk ||
++              selected.size === 0
++            }
++            onClick={() =>
++              void runBulk('remove')
++            }
++          >
++            Remove tags
++          </button>
++        </div>
++
++        {loading ? (
++          <p className="tag-manager-empty">
++            Loading archive media…
++          </p>
++        ) : (
++          <div className="tag-manager-media-list">
++            {visibleItems.map(
++              (item) => {
++                const key =
++                  archiveIndexKey(
++                    item.archiveCategory,
++                    item.relativePath
++                  )
++
++                const itemTags =
++                  tagsFor(
++                    item.archiveCategory,
++                    item.relativePath
++                  )
++
++                return (
++                  <label
++                    key={key}
++                    className="tag-manager-media-row"
++                  >
++                    <input
++                      type="checkbox"
++                      checked={
++                        selected.has(key)
++                      }
++                      onChange={() =>
++                        toggleSelected(item)
++                      }
++                    />
++
++                    <div>
++                      <strong>
++                        {item.title}
++                      </strong>
++                      <span>
++                        {[item.character, item.archiveCategory]
++                          .filter(Boolean)
++                          .join(' · ')}
++                      </span>
++                      <MediaTagChips
++                        tags={itemTags}
++                      />
++                    </div>
++
++                    <Link
++                      to={
++                        archiveIndexPlayerUrl(
++                          item
++                        )
++                      }
++                      onClick={(event) =>
++                        event.stopPropagation()
++                      }
++                    >
++                      Open
++                    </Link>
++                  </label>
++                )
++              }
++            )}
++          </div>
++        )}
++      </section>
++    </main>
++  )
++}
++
++
++export default TagManagerPage

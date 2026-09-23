@@ -22,70 +22,11 @@ import {
 } from './characterRegistry'
 
 
-type CompletenessCategoryDefinition = {
-  key: string
-  label: string
-  catalogCategories: string[]
-  libraryCategories: string[]
-}
-
-
-const categoryDefinitions:
-  CompletenessCategoryDefinition[] = [
-    {
-      key: 'memoria',
-      label: 'Memoria',
-      catalogCategories: ['Memoria'],
-      libraryCategories: ['Memoria'],
-    },
-    {
-      key: 'secret-times',
-      label: 'Secret Times',
-      catalogCategories: ['Secret Times'],
-      libraryCategories: ['Secret Times'],
-    },
-    {
-      key: 'tender-moments',
-      label: 'Tender Moments',
-      catalogCategories: ['Tender Moments'],
-      libraryCategories: ['Tender Moments'],
-    },
-    {
-      key: 'myths',
-      label: 'Myths',
-      catalogCategories: ['Myths'],
-      libraryCategories: ['Myths'],
-    },
-    {
-      key: 'bond',
-      label: 'Bond',
-      catalogCategories: ['Bond'],
-      libraryCategories: ['Bond'],
-    },
-    {
-      key: 'phone-call',
-      label: 'Phone Calls',
-      catalogCategories: ['Phone Call'],
-      libraryCategories: ['Phone Call'],
-    },
-    {
-      key: 'phone-video',
-      label: 'Phone Videos',
-      catalogCategories: ['Phone Video'],
-      libraryCategories: ['Phone Video'],
-    },
-    {
-      key: 'illusio',
-      label: 'Illusio',
-      catalogCategories: [
-        'Illusio',
-        'Illusio Kindle',
-      ],
-      libraryCategories: [
-        'Illusio Kindle',
-      ],
-    },
-  ]
+import {
+  archiveCategoryByCatalogCategory,
+  archiveCategoryByLibraryCategory,
+  completenessCategoryDefinitions,
+} from './archiveCategories'
 
 
 type CoverageAccumulator = {
@@ -128,39 +69,6 @@ function normalizeText(
   return value
     .trim()
     .toLocaleLowerCase()
-}
-
-
-const catalogCategoryLookup =
-  new Map<string, CompletenessCategoryDefinition>()
-
-const libraryCategoryLookup =
-  new Map<string, CompletenessCategoryDefinition>()
-
-
-for (
-  const definition
-  of categoryDefinitions
-) {
-  for (
-    const category
-    of definition.catalogCategories
-  ) {
-    catalogCategoryLookup.set(
-      normalizeText(category),
-      definition
-    )
-  }
-
-  for (
-    const category
-    of definition.libraryCategories
-  ) {
-    libraryCategoryLookup.set(
-      normalizeText(category),
-      definition
-    )
-  }
 }
 
 
@@ -252,18 +160,18 @@ function displayCatalogTitle(
 function getCatalogDefinition(
   category: string
 ) {
-  return catalogCategoryLookup.get(
-    normalizeText(category)
-  ) ?? null
+  return archiveCategoryByCatalogCategory(
+    category
+  )
 }
 
 
 function getLibraryDefinition(
   category: string
 ) {
-  return libraryCategoryLookup.get(
-    normalizeText(category)
-  ) ?? null
+  return archiveCategoryByLibraryCategory(
+    category
+  )
 }
 
 
@@ -378,7 +286,7 @@ async function scanLocalItems(
 
   for (
     const definition
-    of categoryDefinitions
+    of completenessCategoryDefinitions
   ) {
     for (
       const category
@@ -728,7 +636,7 @@ export async function buildArchiveCompleteness(
 
 
   const categories =
-    categoryDefinitions.map(
+    completenessCategoryDefinitions.map(
       (definition) => ({
         key:
           definition.key,
@@ -778,12 +686,12 @@ export async function buildArchiveCompleteness(
       }
 
       const categoryDifference =
-        categoryDefinitions.findIndex(
+        completenessCategoryDefinitions.findIndex(
           (definition) =>
             definition.key ===
             left.categoryKey
         ) -
-        categoryDefinitions.findIndex(
+        completenessCategoryDefinitions.findIndex(
           (definition) =>
             definition.key ===
             right.categoryKey

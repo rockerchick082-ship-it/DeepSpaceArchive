@@ -421,24 +421,34 @@ function HomePage() {
       )
 
 
-      setSelectedCharacter(
-        firstCharacter
-      )
+      const timeoutId =
+        window.setTimeout(
+          () => {
+            setSelectedCharacter(
+              firstCharacter
+            )
+
+            setMediaIndex(
+              0
+            )
+
+            setLoadingMedia(
+              true
+            )
+
+            setMediaError(
+              ''
+            )
+          },
+          0
+        )
 
 
-      setMediaIndex(
-        0
-      )
-
-
-      setLoadingMedia(
-        true
-      )
-
-
-      setMediaError(
-        ''
-      )
+      return () => {
+        window.clearTimeout(
+          timeoutId
+        )
+      }
 
     },
     [
@@ -1780,6 +1790,22 @@ function HomePage() {
 
 
           <Link
+            to="/search"
+            className="home-utility-link"
+          >
+
+            <span className="home-utility-icon">
+              ⌕
+            </span>
+
+            <span>
+              Search
+            </span>
+
+          </Link>
+
+
+          <Link
             to="/favorites"
             className="home-utility-link"
           >
@@ -1854,6 +1880,22 @@ function HomePage() {
 
             <span>
               Rankings
+            </span>
+
+          </Link>
+
+
+          <Link
+            to="/smart-playlists"
+            className="home-utility-link"
+          >
+
+            <span className="home-utility-icon">
+              ✦
+            </span>
+
+            <span>
+              Smart Playlists
             </span>
 
           </Link>

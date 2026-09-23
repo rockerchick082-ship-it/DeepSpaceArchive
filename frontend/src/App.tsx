@@ -24,8 +24,11 @@ import ContinueWatchingPage from './pages/ContinueWatchingPage'
 import HistoryPage from './pages/HistoryPage'
 import StatsPage from './pages/StatsPage'
 import RankingPage from './pages/RankingPage'
+import GlobalSearchPage from './pages/GlobalSearchPage'
 
 import PlaylistsPage from './pages/PlaylistsPage'
+import SmartPlaylistsPage from './pages/SmartPlaylistsPage'
+import SmartPlaylistDetailPage from './pages/SmartPlaylistDetailPage'
 import PlaylistDetailPage from './pages/PlaylistDetailPage'
 
 import MemoriaPage from './pages/MemoriaPage'
@@ -49,6 +52,8 @@ import SettingsPage from './pages/SettingsPage'
 
 import LibraryStatusPage from './pages/LibraryStatusPage'
 import ArchiveCompletenessPage from './pages/ArchiveCompletenessPage'
+import ArchiveIntegrityPage from './pages/ArchiveIntegrityPage'
+import TagManagerPage from './pages/TagManagerPage'
 import MetadataHealthPage from './pages/MetadataHealthPage'
 import ThumbnailCachePage from './pages/ThumbnailCachePage'
 import DatabaseMaintenancePage from './pages/DatabaseMaintenancePage'
@@ -2471,6 +2476,14 @@ function App() {
 
 
         <Route
+          path="/search"
+          element={
+            <GlobalSearchPage />
+          }
+        />
+
+
+        <Route
           path="/favorites"
           element={
             <FavoritesPage />
@@ -2506,6 +2519,22 @@ function App() {
           path="/rankings"
           element={
             <RankingPage />
+          }
+        />
+
+
+        <Route
+          path="/smart-playlists"
+          element={
+            <SmartPlaylistsPage />
+          }
+        />
+
+
+        <Route
+          path="/smart-playlists/:id"
+          element={
+            <SmartPlaylistDetailPage />
           }
         />
 
@@ -2601,6 +2630,22 @@ function App() {
   path="/settings/library"
   element={
     <LibraryStatusPage />
+  }
+/>
+
+
+<Route
+  path="/settings/tags"
+  element={
+    <TagManagerPage />
+  }
+/>
+
+
+<Route
+  path="/settings/integrity"
+  element={
+    <ArchiveIntegrityPage />
   }
 />
 

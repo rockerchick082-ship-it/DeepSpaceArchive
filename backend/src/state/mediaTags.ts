@@ -630,3 +630,337 @@ export function renameMediaTagPath(
   }
 
 }
+
+
+export function renameMediaTag(
+  currentName: string,
+  newName: string
+) {
+
+  const currentNormalized =
+    normalizeTagName(
+      currentName
+    )
+
+  const cleanedNewName =
+    cleanTagName(
+      newName
+    )
+
+
+  if (
+    !currentNormalized ||
+    !cleanedNewName
+  ) {
+
+    throw new Error(
+      'Both currentName and newName are required.'
+    )
+
+  }
+
+
+  const current =
+    database
+      .prepare(`
+        SELECT
+          id,
+          name,
+          normalized_name
+        FROM media_tag
+        WHERE
+          normalized_name = ?
+      `)
+      .get(
+        currentNormalized
+      ) as MediaTagRow | undefined
+
+
+  if (!current) {
+    throw new Error(
+      'Tag was not found.'
+    )
+  }
+
+
+  const targetNormalized =
+    normalizeTagName(
+      cleanedNewName
+    )
+
+
+  if (
+    targetNormalized ===
+    current.normalized_name
+  ) {
+
+    database
+      .prepare(`
+        UPDATE media_tag
+        SET name = ?
+        WHERE id = ?
+      `)
+      .run(
+        cleanedNewName,
+        current.id
+      )
+
+
+    return {
+      name:
+        cleanedNewName,
+      merged:
+        false,
+    }
+
+  }
+
+
+  const target =
+    database
+      .prepare(`
+        SELECT
+          id,
+          name,
+          normalized_name
+        FROM media_tag
+        WHERE
+          normalized_name = ?
+      `)
+      .get(
+        targetNormalized
+      ) as MediaTagRow | undefined
+
+
+  database.exec(
+    'BEGIN IMMEDIATE'
+  )
+
+
+  try {
+
+    if (target) {
+
+      database
+        .prepare(`
+          INSERT OR IGNORE INTO media_tag_assignment (
+            tag_id,
+            category,
+            relative_path,
+            created_at
+          )
+          SELECT
+            ?,
+            category,
+            relative_path,
+            created_at
+          FROM media_tag_assignment
+          WHERE tag_id = ?
+        `)
+        .run(
+          target.id,
+          current.id
+        )
+
+
+      database
+        .prepare(`
+          DELETE FROM media_tag
+          WHERE id = ?
+        `)
+        .run(
+          current.id
+        )
+
+    } else {
+
+      database
+        .prepare(`
+          UPDATE media_tag
+          SET
+            name = ?,
+            normalized_name = ?
+          WHERE id = ?
+        `)
+        .run(
+          cleanedNewName,
+          targetNormalized,
+          current.id
+        )
+
+    }
+
+
+    database.exec(
+      'COMMIT'
+    )
+
+  } catch (error) {
+
+    database.exec(
+      'ROLLBACK'
+    )
+
+    throw error
+
+  }
+
+
+  return {
+    name:
+      target?.name ??
+      cleanedNewName,
+    merged:
+      Boolean(target),
+  }
+
+}
+
+
+export function deleteMediaTag(
+  name: string
+) {
+
+  const normalized =
+    normalizeTagName(
+      name
+    )
+
+
+  if (!normalized) {
+    return 0
+  }
+
+
+  const result =
+    database
+      .prepare(`
+        DELETE FROM media_tag
+        WHERE normalized_name = ?
+      `)
+      .run(
+        normalized
+      )
+
+
+  return Number(
+    result.changes
+  )
+
+}
+
+
+export function bulkUpdateMediaTags(
+  items: Array<{
+    category: string
+    relativePath: string
+  }>,
+  addTags: string[],
+  removeTags: string[]
+) {
+
+  const addNormalized =
+    new Map(
+      cleanTagList(
+        addTags
+      ).map(
+        (tag) => [
+          normalizeTagName(tag),
+          tag,
+        ]
+      )
+    )
+
+  const removeNormalized =
+    new Set(
+      cleanTagList(
+        removeTags
+      ).map(
+        normalizeTagName
+      )
+    )
+
+
+  let updated =
+    0
+
+
+  for (
+    const item
+    of items.slice(
+      0,
+      1000
+    )
+  ) {
+
+    const category =
+      item.category?.trim()
+
+    const relativePath =
+      item.relativePath?.trim()
+
+
+    if (
+      !category ||
+      !relativePath
+    ) {
+      continue
+    }
+
+
+    const current =
+      getMediaTags(
+        category,
+        relativePath
+      )
+
+    const next =
+      new Map(
+        current.map(
+          (tag) => [
+            normalizeTagName(tag),
+            tag,
+          ]
+        )
+      )
+
+
+    for (
+      const normalized
+      of removeNormalized
+    ) {
+      next.delete(
+        normalized
+      )
+    }
+
+
+    for (
+      const [
+        normalized,
+        tag,
+      ]
+      of addNormalized
+    ) {
+      next.set(
+        normalized,
+        tag
+      )
+    }
+
+
+    setMediaTags(
+      category,
+      relativePath,
+      [...next.values()]
+    )
+
+    updated +=
+      1
+
+  }
+
+
+  return updated
+
+}

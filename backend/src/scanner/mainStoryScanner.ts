@@ -1,6 +1,10 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
+import {
+  isIgnoredArchiveDirectory,
+} from '../services/archiveDirectoryRules'
+
 
 const videoExtensions =
   new Set([
@@ -770,7 +774,10 @@ async function scanBranch(
     entries
       .filter(
         (entry) =>
-          entry.isDirectory()
+          entry.isDirectory() &&
+          !isIgnoredArchiveDirectory(
+            entry.name
+          )
       )
       .sort(
         (
@@ -938,7 +945,10 @@ async function scanMainStory(
     entries
       .filter(
         (entry) =>
-          entry.isDirectory()
+          entry.isDirectory() &&
+          !isIgnoredArchiveDirectory(
+            entry.name
+          )
       )
       .sort(
         (

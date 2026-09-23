@@ -72,6 +72,23 @@ const settingsGroups:
 
         {
           to:
+            '/settings/integrity',
+
+          icon:
+            '◉',
+
+          title:
+            'Archive Integrity',
+
+          description:
+            'Create SHA-256 baselines, verify preserved media, detect changed or missing files, and find exact duplicates.',
+
+          tag:
+            'VERIFY',
+        },
+
+        {
+          to:
             '/settings/file-locations',
 
           icon:
@@ -100,6 +117,23 @@ const settingsGroups:
         'Manage catalog records, source data, custom metadata, artwork coverage, and generated thumbnails.',
 
       cards: [
+        {
+          to:
+            '/settings/tags',
+
+          icon:
+            '#',
+
+          title:
+            'Tags',
+
+          description:
+            'Manage, rename, merge, delete, and bulk-apply tags across playable archive media.',
+
+          tag:
+            'ORGANIZE',
+        },
+
         {
           to:
             '/settings/catalog',

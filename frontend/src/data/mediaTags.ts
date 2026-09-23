@@ -440,3 +440,127 @@ export function useMediaTags() {
   }
 
 }
+
+
+export async function bulkUpdateMediaTags(
+  items: Array<{
+    category: string
+    relativePath: string
+  }>,
+  options: {
+    addTags?: string[]
+    removeTags?: string[]
+  }
+) {
+  const response =
+    await fetch(
+      '/api/media-tags/bulk',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':
+            'application/json',
+        },
+        body:
+          JSON.stringify({
+            items,
+            addTags:
+              options.addTags ?? [],
+            removeTags:
+              options.removeTags ?? [],
+          }),
+      }
+    )
+
+  if (!response.ok) {
+    const body =
+      await response.json()
+        .catch(
+          () => null
+        ) as {
+          error?: string
+        } | null
+
+    throw new Error(
+      body?.error ??
+      'Unable to bulk update tags.'
+    )
+  }
+
+  await loadMediaTags(true)
+}
+
+
+export async function renameMediaTag(
+  currentName: string,
+  newName: string
+) {
+  const response =
+    await fetch(
+      '/api/media-tags/tag',
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type':
+            'application/json',
+        },
+        body:
+          JSON.stringify({
+            currentName,
+            newName,
+          }),
+      }
+    )
+
+  const body =
+    await response.json()
+      .catch(
+        () => null
+      ) as {
+        error?: string
+      } | null
+
+  if (!response.ok) {
+    throw new Error(
+      body?.error ??
+      'Unable to rename tag.'
+    )
+  }
+
+  await loadMediaTags(true)
+}
+
+
+export async function deleteMediaTag(
+  name: string
+) {
+  const query =
+    new URLSearchParams({
+      name,
+    })
+
+  const response =
+    await fetch(
+      `/api/media-tags/tag?${query}`,
+      {
+        method: 'DELETE',
+      }
+    )
+
+  const body =
+    await response.json()
+      .catch(
+        () => null
+      ) as {
+        error?: string
+      } | null
+
+  if (!response.ok) {
+    throw new Error(
+      body?.error ??
+      'Unable to delete tag.'
+    )
+  }
+
+  await loadMediaTags(true)
+}

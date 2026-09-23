@@ -49,6 +49,8 @@ import * as thumbnailMaintenanceRouteModule from './routes/thumbnailMaintenanceR
 import * as databaseMaintenanceRouteModule from './routes/databaseMaintenanceRoutes'
 import * as rankingRouteModule from './routes/rankingRoutes'
 import * as mediaTagRouteModule from './routes/mediaTagRoutes'
+import * as archiveIntegrityRouteModule from './routes/archiveIntegrityRoutes'
+import * as smartPlaylistRouteModule from './routes/smartPlaylistRoutes'
 import * as systemInfoRouteModule from './routes/systemInfoRoutes'
 import * as catalogRouteModule from './routes/catalogRoutes'
 import * as galleryRouteModule from './routes/GalleryRoutes'
@@ -319,6 +321,20 @@ const mediaTagRoutes =
   )
 
 
+const archiveIntegrityRoutes =
+  resolveRouter(
+    archiveIntegrityRouteModule,
+    'archiveIntegrityRoutes'
+  )
+
+
+const smartPlaylistRoutes =
+  resolveRouter(
+    smartPlaylistRouteModule,
+    'smartPlaylistRoutes'
+  )
+
+
 /*
  * ========================================
  * GLOBAL MIDDLEWARE
@@ -359,6 +375,18 @@ app.use(
 app.use(
   '/api/media-tags',
   mediaTagRoutes
+)
+
+
+app.use(
+  '/api/archive-integrity',
+  archiveIntegrityRoutes
+)
+
+
+app.use(
+  '/api/smart-playlists',
+  smartPlaylistRoutes
 )
 
 

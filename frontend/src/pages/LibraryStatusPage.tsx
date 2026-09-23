@@ -15,13 +15,14 @@ type CoreLibraryStatus = {
   libraryRoot: string
   totalMedia: number
 
-  categories: {
-    memoria: number
-    secretTimes: number
-    myths: number
-    bond: number
-    tenderMoments: number
-  }
+  categories:
+    Record<string, number>
+
+  categoryDefinitions: Array<{
+    key: string
+    label: string
+    stateCategory: string
+  }>
 
   characters:
     Record<string, number>
@@ -33,22 +34,6 @@ type CoreLibraryStatus = {
   }
 
   scannedAt: string
-}
-
-
-type ArchiveItemSummary = {
-  character?: string | null
-
-  mediaType?:
-    | 'video'
-    | 'audio'
-    | 'image'
-}
-
-
-type ArchiveResponse = {
-  count: number
-  items: ArchiveItemSummary[]
 }
 
 
@@ -101,54 +86,6 @@ type ExtendedLibraryStatus = {
   scannedAt: string
   warnings: string[]
 }
-
-
-type SupplementalSource = {
-  key:
-    | 'phoneCalls'
-    | 'phoneVideos'
-    | 'illusio'
-
-  label: string
-  endpoint: string
-}
-
-
-const supplementalSources:
-  SupplementalSource[] = [
-    {
-      key:
-        'phoneCalls',
-
-      label:
-        'Phone Calls',
-
-      endpoint:
-        '/api/library/phone-calls',
-    },
-
-    {
-      key:
-        'phoneVideos',
-
-      label:
-        'Phone Videos',
-
-      endpoint:
-        '/api/library/phone-videos',
-    },
-
-    {
-      key:
-        'illusio',
-
-      label:
-        'Illusio',
-
-      endpoint:
-        '/api/library/illusio',
-    },
-  ]
 
 
 async function fetchJson<T>(
@@ -216,78 +153,18 @@ function addCharacter(
 }
 
 
-function addMediaType(
-  counts:
-    ExtendedLibraryStatus['mediaTypes'],
-  mediaType:
-    ArchiveItemSummary['mediaType']
-) {
-
-  if (
-    mediaType ===
-      'video'
-  ) {
-
-    counts.video +=
-      1
-
-  }
-
-
-  if (
-    mediaType ===
-      'audio'
-  ) {
-
-    counts.audio +=
-      1
-
-  }
-
-
-  if (
-    mediaType ===
-      'image'
-  ) {
-
-    counts.image +=
-      1
-
-  }
-
-}
-
-
 async function fetchLibraryStatus():
   Promise<ExtendedLibraryStatus> {
 
   const [
     coreResult,
-    phoneCallsResult,
-    phoneVideosResult,
-    illusioResult,
     mainStoryResult,
     galleryResult,
   ] =
     await Promise.allSettled([
       fetchJson<CoreLibraryStatus>(
         '/api/library-health/status',
-        'Unable to load core library status.'
-      ),
-
-      fetchJson<ArchiveResponse>(
-        '/api/library/phone-calls',
-        'Unable to scan Phone Calls.'
-      ),
-
-      fetchJson<ArchiveResponse>(
-        '/api/library/phone-videos',
-        'Unable to scan Phone Videos.'
-      ),
-
-      fetchJson<ArchiveResponse>(
-        '/api/library/illusio',
-        'Unable to scan Illusio.'
+        'Unable to load library status.'
       ),
 
       fetchJson<MainStoryResponse>(
@@ -321,38 +198,17 @@ async function fetchLibraryStatus():
 
 
   const categories:
-    ExtendedLibraryStatus[
-      'categories'
-    ] = {
-      mainStory:
-        0,
-
-      memoria:
-        core.categories.memoria,
-
-      secretTimes:
-        core.categories.secretTimes,
-
-      myths:
-        core.categories.myths,
-
-      bond:
-        core.categories.bond,
-
-      tenderMoments:
-        core.categories.tenderMoments,
-
-      phoneCalls:
-        0,
-
-      phoneVideos:
-        0,
-
-      illusio:
-        0,
-
-      gallery:
-        0,
+    ExtendedLibraryStatus['categories'] = {
+      mainStory: 0,
+      memoria: core.categories['memoria'] ?? 0,
+      secretTimes: core.categories['secret-times'] ?? 0,
+      myths: core.categories['myths'] ?? 0,
+      bond: core.categories['bond'] ?? 0,
+      tenderMoments: core.categories['tender-moments'] ?? 0,
+      phoneCalls: core.categories['phone-call'] ?? 0,
+      phoneVideos: core.categories['phone-video'] ?? 0,
+      illusio: core.categories['illusio'] ?? 0,
+      gallery: 0,
     }
 
 
@@ -366,87 +222,16 @@ async function fetchLibraryStatus():
   }
 
 
-  const archiveResults = [
-    phoneCallsResult,
-    phoneVideosResult,
-    illusioResult,
-  ]
-
-
-  archiveResults.forEach(
-    (
-      result,
-      index
-    ) => {
-
-      const source =
-        supplementalSources[
-          index
-        ]
-
-
-      if (
-        result.status ===
-        'rejected'
-      ) {
-
-        warnings.push(
-          source.label
-        )
-
-
-        return
-
-      }
-
-
-      categories[
-        source.key
-      ] =
-        result.value.count
-
-
-      for (
-        const item
-        of result.value.items
-      ) {
-
-        addCharacter(
-          characters,
-          item.character
-        )
-
-
-        addMediaType(
-          mediaTypes,
-          item.mediaType
-        )
-
-      }
-
-    }
-  )
-
-
   if (
     mainStoryResult.status ===
     'fulfilled'
   ) {
 
     categories.mainStory =
-      mainStoryResult
-        .value
-        .partCount
+      mainStoryResult.value.partCount
 
-
-    /*
-     * Main Story parts are playable video story
-     * segments in the current archive model.
-     */
     mediaTypes.video +=
-      mainStoryResult
-        .value
-        .partCount
+      mainStoryResult.value.partCount
 
   } else {
 
@@ -463,22 +248,14 @@ async function fetchLibraryStatus():
   ) {
 
     categories.gallery =
-      galleryResult
-        .value
-        .count
-
+      galleryResult.value.count
 
     mediaTypes.image +=
-      galleryResult
-        .value
-        .count
-
+      galleryResult.value.count
 
     for (
       const item
-      of galleryResult
-        .value
-        .items
+      of galleryResult.value.items
     ) {
 
       addCharacter(
@@ -505,31 +282,20 @@ async function fetchLibraryStatus():
         total,
         count
       ) =>
-        total +
-        count,
+        total + count,
       0
     )
 
 
   return {
-    connected:
-      core.connected,
-
-    libraryRoot:
-      core.libraryRoot,
-
+    connected: core.connected,
+    libraryRoot: core.libraryRoot,
     totalMedia,
-
     categories,
-
     characters,
-
     mediaTypes,
-
     scannedAt:
-      new Date()
-        .toISOString(),
-
+      new Date().toISOString(),
     warnings,
   }
 

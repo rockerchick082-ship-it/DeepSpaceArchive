@@ -3,9 +3,12 @@ import {
 } from 'express'
 
 import {
+  bulkUpdateMediaTags,
+  deleteMediaTag,
   getMediaTags,
   listMediaTagAssignments,
   listMediaTagSummaries,
+  renameMediaTag,
   setMediaTags,
 } from '../state/mediaTags'
 
@@ -165,6 +168,238 @@ mediaTagRoutes.put(
         .json({
           error:
             'Unable to save media tags.',
+        })
+
+    }
+
+  }
+)
+
+
+mediaTagRoutes.post(
+  '/bulk',
+  (
+    request,
+    response
+  ) => {
+
+    try {
+
+      const items =
+        Array.isArray(
+          request.body?.items
+        )
+          ? request.body.items.filter(
+              (
+                item: unknown
+              ): item is {
+                category: string
+                relativePath: string
+              } =>
+                Boolean(
+                  item &&
+                  typeof item === 'object' &&
+                  typeof (
+                    item as {
+                      category?: unknown
+                    }
+                  ).category === 'string' &&
+                  typeof (
+                    item as {
+                      relativePath?: unknown
+                    }
+                  ).relativePath === 'string'
+                )
+            )
+          : []
+
+      const addTags =
+        Array.isArray(
+          request.body?.addTags
+        )
+          ? request.body.addTags.filter(
+              (
+                tag: unknown
+              ): tag is string =>
+                typeof tag === 'string'
+            )
+          : []
+
+      const removeTags =
+        Array.isArray(
+          request.body?.removeTags
+        )
+          ? request.body.removeTags.filter(
+              (
+                tag: unknown
+              ): tag is string =>
+                typeof tag === 'string'
+            )
+          : []
+
+
+      if (
+        items.length === 0 ||
+        (
+          addTags.length === 0 &&
+          removeTags.length === 0
+        )
+      ) {
+
+        response
+          .status(400)
+          .json({
+            error:
+              'At least one media item and one tag change are required.',
+          })
+
+        return
+
+      }
+
+
+      const updated =
+        bulkUpdateMediaTags(
+          items,
+          addTags,
+          removeTags
+        )
+
+
+      response.json({
+        updated,
+        tags:
+          listMediaTagSummaries(),
+        assignments:
+          listMediaTagAssignments(),
+      })
+
+    } catch (error) {
+
+      console.error(
+        'Unable to bulk update media tags:',
+        error
+      )
+
+      response
+        .status(500)
+        .json({
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Unable to bulk update media tags.',
+        })
+
+    }
+
+  }
+)
+
+
+mediaTagRoutes.put(
+  '/tag',
+  (
+    request,
+    response
+  ) => {
+
+    try {
+
+      const currentName =
+        typeof request.body?.currentName === 'string'
+          ? request.body.currentName
+          : ''
+
+      const newName =
+        typeof request.body?.newName === 'string'
+          ? request.body.newName
+          : ''
+
+
+      const result =
+        renameMediaTag(
+          currentName,
+          newName
+        )
+
+
+      response.json({
+        ...result,
+        tags:
+          listMediaTagSummaries(),
+        assignments:
+          listMediaTagAssignments(),
+      })
+
+    } catch (error) {
+
+      response
+        .status(400)
+        .json({
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Unable to rename tag.',
+        })
+
+    }
+
+  }
+)
+
+
+mediaTagRoutes.delete(
+  '/tag',
+  (
+    request,
+    response
+  ) => {
+
+    try {
+
+      const name =
+        typeof request.query.name === 'string'
+          ? request.query.name
+          : ''
+
+
+      if (!name.trim()) {
+
+        response
+          .status(400)
+          .json({
+            error:
+              'Tag name is required.',
+          })
+
+        return
+
+      }
+
+
+      const deleted =
+        deleteMediaTag(
+          name
+        )
+
+
+      response.json({
+        deleted,
+        tags:
+          listMediaTagSummaries(),
+        assignments:
+          listMediaTagAssignments(),
+      })
+
+    } catch (error) {
+
+      response
+        .status(500)
+        .json({
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Unable to delete tag.',
         })
 
     }

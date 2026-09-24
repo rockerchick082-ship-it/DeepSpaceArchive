@@ -55,6 +55,23 @@ const settingsGroups:
 
         {
           to:
+            '/recently-added',
+
+          icon:
+            '+',
+
+          title:
+            'Recently Imported',
+
+          description:
+            'See media files first discovered by Archive Integrity, separate from wiki-synced new-content records.',
+
+          tag:
+            'RECENT',
+        },
+
+        {
+          to:
             '/settings/completeness',
 
           icon:
@@ -277,7 +294,7 @@ const settingsGroups:
             'Personal Data',
 
           description:
-            'Clear favorites, ratings, watch history, progress, playlists, and ranking votes while preserving catalog file matches.',
+            'Clear favorites, ratings, watch history, progress, playlists, smart playlists, tags, and ranking votes while preserving catalog file matches.',
 
           tag:
             'RESET',
@@ -296,6 +313,23 @@ const settingsGroups:
         'Review application and runtime information, then configure archive navigation behavior.',
 
       cards: [
+        {
+          to:
+            '/settings/mobile',
+
+          icon:
+            '▤',
+
+          title:
+            'Android Connection & Storage',
+
+          description:
+            'Change the NAS address, reconnect, inspect offline cache age, and review device download storage.',
+
+          tag:
+            'MOBILE',
+        },
+
         {
           to:
             '/settings/about',

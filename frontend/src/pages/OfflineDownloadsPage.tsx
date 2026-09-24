@@ -17,11 +17,21 @@ type DownloadRecord = {
   character?: string
   category?: string
   fileName?: string
+  fileSize?: number
+  downloadedAt?: number
 }
 
 
+type StorageStats = {
+  downloadedCount?: number
+  downloadBytes?: number
+  availableBytes?: number
+  totalBytes?: number
+}
+
 type DownloadBridge = {
   getDownloads?: () => string
+  getStorageStats?: () => string
 
   deleteDownload?: (
     relativePath: string
@@ -57,6 +67,19 @@ function fallbackTitle(
     'Offline media'
   )
 
+}
+
+
+function formatBytes(value: number | undefined) {
+  const bytes = Number(value ?? 0)
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const index = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1
+  )
+  const amount = bytes / Math.pow(1024, index)
+  return `${amount >= 10 || index === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[index]}`
 }
 
 
@@ -107,6 +130,13 @@ function OfflineDownloadsPage() {
     useState(
       ''
     )
+
+
+  const [storageStats, setStorageStats] =
+    useState<StorageStats>({})
+
+  const [sortBy, setSortBy] =
+    useState<'date' | 'size' | 'title' | 'character'>('date')
 
 
   const bridge =
@@ -162,6 +192,15 @@ function OfflineDownloadsPage() {
           )
 
 
+          if (bridge.getStorageStats) {
+            try {
+              const storage = JSON.parse(bridge.getStorageStats()) as StorageStats
+              setStorageStats(storage)
+            } catch {
+              setStorageStats({})
+            }
+          }
+
           setMessage(
             ''
           )
@@ -212,48 +251,41 @@ function OfflineDownloadsPage() {
   const visible =
     useMemo(
       () => {
+        const search = searchText.trim().toLocaleLowerCase()
 
-        const search =
-          searchText
-            .trim()
-            .toLocaleLowerCase()
+        const filtered = !search
+          ? [...items]
+          : items.filter((item) =>
+              [
+                fallbackTitle(item),
+                item.character ?? '',
+                item.category ?? '',
+                item.relativePath ?? '',
+              ]
+                .join(' ')
+                .toLocaleLowerCase()
+                .includes(search)
+            )
 
+        filtered.sort((first, second) => {
+          if (sortBy === 'size') {
+            return (second.fileSize ?? 0) - (first.fileSize ?? 0)
+          }
+          if (sortBy === 'title') {
+            return fallbackTitle(first).localeCompare(fallbackTitle(second))
+          }
+          if (sortBy === 'character') {
+            return (first.character ?? '').localeCompare(second.character ?? '') ||
+              fallbackTitle(first).localeCompare(fallbackTitle(second))
+          }
+          return (second.downloadedAt ?? 0) - (first.downloadedAt ?? 0)
+        })
 
-        if (!search) {
-
-          return items
-
-        }
-
-
-        return items.filter(
-          (item) =>
-            [
-              fallbackTitle(
-                item
-              ),
-              item.character ??
-                '',
-              item.category ??
-                '',
-              item.relativePath ??
-                '',
-            ]
-              .join(
-                ' '
-              )
-              .toLocaleLowerCase()
-              .includes(
-                search
-              )
-        )
-
+        return filtered
       },
-      [
-        items,
-        searchText,
-      ]
+      [items, searchText, sortBy]
     )
+
 
 
   function toggle(
@@ -450,6 +482,37 @@ function OfflineDownloadsPage() {
 
   }
 
+  async function deleteWatched() {
+    try {
+      const response = await fetch('/api/archive/states')
+      if (!response.ok) throw new Error('Unable to load watch state.')
+      const data = await response.json() as { items?: Array<{ category: string; relativePath: string; completed: boolean }> }
+      const completed = new Set(
+        (data.items ?? [])
+          .filter((item) => item.completed)
+          .map((item) => `${item.category}\u0000${item.relativePath}`)
+      )
+      const watched = items.filter((item) =>
+        Boolean(item.relativePath) && completed.has(`${item.category ?? ''}\u0000${item.relativePath}`)
+      )
+      if (watched.length === 0) {
+        setMessage('No completed downloads are ready to remove.')
+        return
+      }
+      if (!window.confirm(`Remove ${watched.length} completed offline download${watched.length === 1 ? '' : 's'}?`)) return
+      let removed = 0
+      for (const item of watched) {
+        if (item.relativePath && removeOne(item.relativePath)) removed += 1
+      }
+      setMessage(`Removed ${removed} completed offline download${removed === 1 ? '' : 's'}.`)
+      setSelected(new Set())
+      load()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to remove completed downloads.')
+    }
+  }
+
+
 
   return (
 
@@ -461,7 +524,7 @@ function OfflineDownloadsPage() {
           to="/"
           className="back-button"
         >
-          â€¹
+          ‹
         </Link>
 
 
@@ -508,12 +571,19 @@ function OfflineDownloadsPage() {
       ) : loading ? (
 
         <section className="archive-feedback-panel">
-          Loading offline downloadsâ€¦
+          Loading offline downloads…
         </section>
 
       ) : (
 
         <>
+
+          <section className="personal-data-summary-grid offline-storage-summary">
+            <div><strong>{items.length}</strong><span>Downloads</span></div>
+            <div><strong>{formatBytes(storageStats.downloadBytes)}</strong><span>Used by Downloads</span></div>
+            <div><strong>{formatBytes(storageStats.availableBytes)}</strong><span>Device Space Free</span></div>
+            <div><strong>{formatBytes(storageStats.totalBytes)}</strong><span>Device Storage</span></div>
+          </section>
 
           <section className="offline-download-toolbar">
 
@@ -522,7 +592,7 @@ function OfflineDownloadsPage() {
               value={
                 searchText
               }
-              placeholder="Search downloadsâ€¦"
+              placeholder="Search downloads…"
               onChange={(event) =>
                 setSearchText(
                   event.target.value
@@ -530,6 +600,16 @@ function OfflineDownloadsPage() {
               }
             />
 
+
+            <label className="offline-download-sort">
+              <span>Sort</span>
+              <select value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}>
+                <option value="date">Newest</option>
+                <option value="size">Largest</option>
+                <option value="title">Title</option>
+                <option value="character">Character</option>
+              </select>
+            </label>
 
             <button
               type="button"
@@ -583,6 +663,14 @@ function OfflineDownloadsPage() {
               Delete Selected ({selected.size})
             </button>
 
+
+            <button
+              type="button"
+              disabled={items.length === 0}
+              onClick={() => void deleteWatched()}
+            >
+              Remove Watched
+            </button>
 
             <button
               type="button"
@@ -687,7 +775,7 @@ function OfflineDownloadsPage() {
                                 Boolean
                               )
                               .join(
-                                ' Â· '
+                                ' · '
                               ) ||
                               'Downloaded media'}
                           </span>
@@ -695,6 +783,11 @@ function OfflineDownloadsPage() {
                           <code>
                             {relativePath}
                           </code>
+
+                          <small>
+                            {formatBytes(item.fileSize)}
+                            {item.downloadedAt ? ` · ${new Date(item.downloadedAt).toLocaleString()}` : ''}
+                          </small>
 
                         </div>
 

@@ -28,9 +28,15 @@ import {
   writeArchiveViewState,
 } from '../data/archiveViewState'
 
-import ArchiveQuickActions
-  from './ArchiveQuickActions'
-
+import ArchiveCoverageNotice from './ArchiveCoverageNotice'
+import BulkMediaActions from './BulkMediaActions'
+
+import ArchiveQuickActions
+
+  from './ArchiveQuickActions'
+
+
+
 const characterStorageKey =
   'deepspace-archive-selected-character'
 
@@ -1443,6 +1449,8 @@ function VideoArchivePage({
 
       </header>
 
+      <ArchiveCoverageNotice category={title} />
+
 
       <section className="library-controls archive-library-controls">
 
@@ -1732,6 +1740,15 @@ function VideoArchivePage({
 
           </div>
 
+          <BulkMediaActions
+            items={filteredItems.map((item) => ({
+              category: item.category,
+              relativePath: item.relativePath,
+              title: item.title,
+            }))}
+            label={`Bulk actions on ${filteredItems.length} shown`}
+            onChanged={loadItems}
+          />
 
           {filteredItems.length >
             0 ? (
@@ -1794,24 +1811,42 @@ function VideoArchivePage({
                       nasConnected={
                         nasConnected
                       }
-                      downloaded={
-                        downloadedPaths.has(
-                          item.relativePath
-                        )
-                      }
-                      playerPath={
-                        playerPath
-                      }
-                      onStateChange={(nextState) =>
-                        setArchiveStates(
-                          (current) => ({
-                            ...current,
-
-                            [key]:
-                              nextState,
-                          })
-                        )
-                      }
+                      downloaded={
+
+                        downloadedPaths.has(
+
+                          item.relativePath
+
+                        )
+
+                      }
+
+                      playerPath={
+
+                        playerPath
+
+                      }
+
+                      onStateChange={(nextState) =>
+
+                        setArchiveStates(
+
+                          (current) => ({
+
+                            ...current,
+
+
+
+                            [key]:
+
+                              nextState,
+
+                          })
+
+                        )
+
+                      }
+
                       onOpen={() =>
                         openItem(
                           item
@@ -1918,15 +1953,22 @@ type VideoArchiveCardProps = {
   favoriteSaving: boolean
   isMobileApp: boolean
   nasConnected: boolean
-  downloaded: boolean
-  playerPath: string
+  downloaded: boolean
+
+  playerPath: string
+
   onOpen: () => void
   onEdit: () => void
-  onToggleFavorite: () => void
-  onStateChange: (
-    state:
-      ArchiveStateSummary
-  ) => void
+  onToggleFavorite: () => void
+
+  onStateChange: (
+
+    state:
+
+      ArchiveStateSummary
+
+  ) => void
+
 }
 
 
@@ -1940,12 +1982,18 @@ function VideoArchiveCard({
   favoriteSaving,
   isMobileApp,
   nasConnected,
-  downloaded,
-  playerPath,
-  onOpen,
-  onEdit,
-  onToggleFavorite,
-  onStateChange,
+  downloaded,
+
+  playerPath,
+
+  onOpen,
+
+  onEdit,
+
+  onToggleFavorite,
+
+  onStateChange,
+
 }: VideoArchiveCardProps) {
 
   const customThumbnailUrl =
@@ -2585,44 +2633,82 @@ function VideoArchiveCard({
         </button>
 
 
-        <MediaTagEditor
-          title={
-            item.title
-          }
-          tags={
-            tags
-          }
-          availableTags={
-            availableTags
-          }
-          onSave={
-            onSaveTags
-          }
-        />
-
-
-        <ArchiveQuickActions
-          category={
-            item.category
-          }
-          relativePath={
-            item.relativePath
-          }
-          title={
-            item.title
-          }
-          character={
-            item.character
-          }
-          playerPath={
-            playerPath
-          }
-          state={
-            archiveState
-          }
-          onStateChange={
-            onStateChange
-          }
+        <MediaTagEditor
+
+          title={
+
+            item.title
+
+          }
+
+          tags={
+
+            tags
+
+          }
+
+          availableTags={
+
+            availableTags
+
+          }
+
+          onSave={
+
+            onSaveTags
+
+          }
+
+        />
+
+
+
+
+
+        <ArchiveQuickActions
+
+          category={
+
+            item.category
+
+          }
+
+          relativePath={
+
+            item.relativePath
+
+          }
+
+          title={
+
+            item.title
+
+          }
+
+          character={
+
+            item.character
+
+          }
+
+          playerPath={
+
+            playerPath
+
+          }
+
+          state={
+
+            archiveState
+
+          }
+
+          onStateChange={
+
+            onStateChange
+
+          }
+
         />
 
 

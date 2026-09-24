@@ -32,6 +32,10 @@ type BackupManifest = {
   customThumbnailCount: number
   archiveStateCount: number
   playlistCount: number
+  mediaTagCount?: number
+  mediaTagAssignmentCount?: number
+  smartPlaylistCount?: number
+  rankingVoteCount?: number
 
   catalogItemCount?: number
   catalogFileMatchCount?: number
@@ -71,6 +75,26 @@ type BackupPlaylist = {
 }
 
 
+
+type BackupMediaTag = {
+  name: string
+  createdAt: string
+}
+
+type BackupMediaTagAssignment = {
+  tagName: string
+  category: string
+  relativePath: string
+  createdAt: string
+}
+
+type BackupSmartPlaylist = {
+  name: string
+  rules: unknown
+  createdAt: string
+  updatedAt: string
+}
+
 type BackupRankingVote = {
   category: string
   character: string
@@ -100,6 +124,15 @@ type ApplicationState = {
 
   rankingVotes?:
     BackupRankingVote[]
+
+  mediaTags?:
+    BackupMediaTag[]
+
+  mediaTagAssignments?:
+    BackupMediaTagAssignment[]
+
+  smartPlaylists?:
+    BackupSmartPlaylist[]
 }
 
 
@@ -124,6 +157,10 @@ export type RestorePreview = {
   counts: {
     archiveState: number
     playlists: number
+    rankingVotes: number
+    mediaTags: number
+    mediaTagAssignments: number
+    smartPlaylists: number
     metadata: number
     thumbnails: number
     catalogItems: number
@@ -166,6 +203,22 @@ export type RestoreResult = {
     created: number
     merged: number
     itemsAdded: number
+  }
+
+  rankingVotes: {
+    merged: number
+  }
+
+  mediaTags: {
+    created: number
+    existing: number
+    assignmentsAdded: number
+    assignmentsExisting: number
+  }
+
+  smartPlaylists: {
+    created: number
+    merged: number
   }
 
   metadata: {
@@ -943,6 +996,35 @@ export async function analyzeArchiveBackup(
 
 
   if (
+    manifest.rankingVoteCount !== undefined &&
+    manifest.rankingVoteCount !== (applicationState.rankingVotes ?? []).length
+  ) {
+    warnings.push('Ranking-vote count does not match the backup manifest.')
+  }
+
+  if (
+    manifest.mediaTagCount !== undefined &&
+    manifest.mediaTagCount !== (applicationState.mediaTags ?? []).length
+  ) {
+    warnings.push('Tag count does not match the backup manifest.')
+  }
+
+  if (
+    manifest.mediaTagAssignmentCount !== undefined &&
+    manifest.mediaTagAssignmentCount !== (applicationState.mediaTagAssignments ?? []).length
+  ) {
+    warnings.push('Tag-assignment count does not match the backup manifest.')
+  }
+
+  if (
+    manifest.smartPlaylistCount !== undefined &&
+    manifest.smartPlaylistCount !== (applicationState.smartPlaylists ?? []).length
+  ) {
+    warnings.push('Smart-playlist count does not match the backup manifest.')
+  }
+
+
+  if (
     catalogState &&
     manifest.catalogItemCount !==
       undefined &&
@@ -1025,6 +1107,18 @@ export async function analyzeArchiveBackup(
         applicationState
           .playlists
           .length,
+
+      rankingVotes:
+        (applicationState.rankingVotes ?? []).length,
+
+      mediaTags:
+        (applicationState.mediaTags ?? []).length,
+
+      mediaTagAssignments:
+        (applicationState.mediaTagAssignments ?? []).length,
+
+      smartPlaylists:
+        (applicationState.smartPlaylists ?? []).length,
 
       metadata:
         metadataEntries
@@ -1163,6 +1257,15 @@ export async function restoreArchiveBackupMerge(
 
   let thumbnailsMissingMediaSkipped =
     0
+
+
+  let rankingVotesMerged = 0
+  let mediaTagsCreated = 0
+  let mediaTagsExisting = 0
+  let mediaTagAssignmentsAdded = 0
+  let mediaTagAssignmentsExisting = 0
+  let smartPlaylistsCreated = 0
+  let smartPlaylistsMerged = 0
 
 
   /*
@@ -1982,6 +2085,137 @@ export async function restoreArchiveBackupMerge(
         backupVote.updatedAt
       )
 
+      rankingVotesMerged += 1
+
+    }
+
+
+    /* ===================================
+     * TAGS
+     * =================================== */
+
+    const findTagByNormalizedName = database.prepare(`
+      SELECT id, name
+      FROM media_tag
+      WHERE normalized_name = ?
+      LIMIT 1
+    `)
+
+    const insertTag = database.prepare(`
+      INSERT INTO media_tag (name, normalized_name, created_at)
+      VALUES (?, ?, ?)
+    `)
+
+    const findTagAssignment = database.prepare(`
+      SELECT 1
+      FROM media_tag_assignment
+      WHERE tag_id = ? AND category = ? AND relative_path = ?
+      LIMIT 1
+    `)
+
+    const insertTagAssignment = database.prepare(`
+      INSERT OR IGNORE INTO media_tag_assignment (
+        tag_id, category, relative_path, created_at
+      ) VALUES (?, ?, ?, ?)
+    `)
+
+    const tagIds = new Map<string, number>()
+
+    for (const backupTag of applicationState.mediaTags ?? []) {
+      const name = backupTag.name?.trim()
+      if (!name) continue
+      const normalized = name.replace(/\s+/g, ' ').toLocaleLowerCase()
+      let current = findTagByNormalizedName.get(normalized) as { id: number; name: string } | undefined
+
+      if (!current) {
+        const result = insertTag.run(name.slice(0, 50), normalized.slice(0, 50), backupTag.createdAt || new Date().toISOString())
+        current = { id: Number(result.lastInsertRowid), name }
+        mediaTagsCreated += 1
+      } else {
+        mediaTagsExisting += 1
+      }
+
+      tagIds.set(normalized, current.id)
+    }
+
+    for (const assignment of applicationState.mediaTagAssignments ?? []) {
+      const tagName = assignment.tagName?.trim()
+      if (!tagName || !assignment.category || !assignment.relativePath) continue
+      const normalized = tagName.replace(/\s+/g, ' ').toLocaleLowerCase()
+      let tagId = tagIds.get(normalized)
+
+      if (!tagId) {
+        const current = findTagByNormalizedName.get(normalized) as { id: number } | undefined
+        if (current) {
+          tagId = current.id
+          tagIds.set(normalized, tagId)
+        } else {
+          const result = insertTag.run(tagName.slice(0, 50), normalized.slice(0, 50), assignment.createdAt || new Date().toISOString())
+          tagId = Number(result.lastInsertRowid)
+          tagIds.set(normalized, tagId)
+          mediaTagsCreated += 1
+        }
+      }
+
+      const existing = findTagAssignment.get(tagId, assignment.category, assignment.relativePath)
+      if (existing) {
+        mediaTagAssignmentsExisting += 1
+        continue
+      }
+
+      insertTagAssignment.run(
+        tagId,
+        assignment.category,
+        assignment.relativePath,
+        assignment.createdAt || new Date().toISOString()
+      )
+      mediaTagAssignmentsAdded += 1
+    }
+
+
+    /* ===================================
+     * SMART PLAYLISTS
+     * =================================== */
+
+    const findSmartPlaylist = database.prepare(`
+      SELECT id, updated_at
+      FROM smart_playlist
+      WHERE name = ? COLLATE NOCASE
+      ORDER BY id
+      LIMIT 1
+    `)
+
+    const insertSmartPlaylist = database.prepare(`
+      INSERT INTO smart_playlist (name, rules_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?)
+    `)
+
+    const updateSmartPlaylist = database.prepare(`
+      UPDATE smart_playlist
+      SET rules_json = ?, updated_at = ?
+      WHERE id = ?
+    `)
+
+    for (const smartPlaylist of applicationState.smartPlaylists ?? []) {
+      const name = smartPlaylist.name?.trim().slice(0, 120)
+      if (!name) continue
+      const rulesJson = JSON.stringify(smartPlaylist.rules ?? {})
+      const current = findSmartPlaylist.get(name) as { id: number; updated_at: string } | undefined
+
+      if (!current) {
+        insertSmartPlaylist.run(
+          name, rulesJson,
+          smartPlaylist.createdAt || new Date().toISOString(),
+          smartPlaylist.updatedAt || smartPlaylist.createdAt || new Date().toISOString()
+        )
+        smartPlaylistsCreated += 1
+        continue
+      }
+
+      if (timestampValue(smartPlaylist.updatedAt) > timestampValue(current.updated_at)) {
+        updateSmartPlaylist.run(rulesJson, smartPlaylist.updatedAt, current.id)
+      }
+      smartPlaylistsMerged += 1
     }
 
 
@@ -2051,6 +2285,22 @@ export async function restoreArchiveBackupMerge(
       itemsAdded:
         playlistItemsAdded,
 
+    },
+
+    rankingVotes: {
+      merged: rankingVotesMerged,
+    },
+
+    mediaTags: {
+      created: mediaTagsCreated,
+      existing: mediaTagsExisting,
+      assignmentsAdded: mediaTagAssignmentsAdded,
+      assignmentsExisting: mediaTagAssignmentsExisting,
+    },
+
+    smartPlaylists: {
+      created: smartPlaylistsCreated,
+      merged: smartPlaylistsMerged,
     },
 
     metadata: {

@@ -199,6 +199,22 @@ const SettingsPage =
       )
   )
 
+const RecentlyAddedPage =
+  lazy(
+    () =>
+      import(
+        './pages/RecentlyAddedPage'
+      )
+  )
+
+const MobileSettingsPage =
+  lazy(
+    () =>
+      import(
+        './pages/MobileSettingsPage'
+      )
+  )
+
 const LibraryStatusPage =
   lazy(
     () =>
@@ -239,14 +255,22 @@ const NewContentInboxPage =
       )
   )
 
-const OfflineDownloadsPage =
-  lazy(
-    () =>
-      import(
-        './pages/OfflineDownloadsPage'
-      )
-  )
-
+const OfflineDownloadsPage =
+
+  lazy(
+
+    () =>
+
+      import(
+
+        './pages/OfflineDownloadsPage'
+
+      )
+
+  )
+
+
+
 const MetadataHealthPage =
   lazy(
     () =>
@@ -791,6 +815,19 @@ type MobileOfflinePlaybackRuntime = {
 const offlinePlaybackQueueKey =
   'deepspaceArchiveOfflinePlaybackQueue:v1'
 
+const offlineMutationQueueKey =
+  'deepspaceArchiveOfflineMutationQueue:v1'
+
+
+type OfflineMutation = {
+  id: string
+  path: string
+  method: string
+  body: string
+  queuedAt: string
+  dedupeKey: string
+}
+
 
 const archiveSnapshotPrefix =
   'deepspaceArchiveArchiveState:v1:'
@@ -992,6 +1029,122 @@ function writeOfflinePlaybackQueue(
 
   }
 
+}
+
+
+function readOfflineMutationQueue() {
+  try {
+    const raw = window.localStorage.getItem(offlineMutationQueueKey)
+    if (!raw) return [] as OfflineMutation[]
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed as OfflineMutation[] : []
+  } catch {
+    return [] as OfflineMutation[]
+  }
+}
+
+
+function writeOfflineMutationQueue(items: OfflineMutation[]) {
+  try {
+    if (items.length === 0) {
+      window.localStorage.removeItem(offlineMutationQueueKey)
+      return
+    }
+    window.localStorage.setItem(offlineMutationQueueKey, JSON.stringify(items.slice(-500)))
+  } catch (error) {
+    console.error('Unable to persist offline edit queue:', error)
+  }
+}
+
+
+function queueableOfflineMutation(pathname: string, method: string, body: string) {
+  if (method === 'POST' && [
+    '/api/archive/favorite',
+    '/api/archive/rating',
+    '/api/archive/completion',
+  ].includes(pathname)) {
+    try {
+      const parsed = JSON.parse(body) as { category?: string; relativePath?: string }
+      if (!parsed.category || !parsed.relativePath) return null
+      return `${pathname}:${parsed.category}:${parsed.relativePath}`
+    } catch {
+      return null
+    }
+  }
+
+  if (method === 'PUT' && pathname === '/api/media-tags/item') {
+    try {
+      const parsed = JSON.parse(body) as { category?: string; relativePath?: string }
+      if (!parsed.category || !parsed.relativePath) return null
+      return `${pathname}:${parsed.category}:${parsed.relativePath}`
+    } catch {
+      return null
+    }
+  }
+
+  return null
+}
+
+
+function enqueueOfflineMutation(path: string, method: string, body: string, dedupeKey: string) {
+  const queue = readOfflineMutationQueue().filter((item) => item.dedupeKey !== dedupeKey)
+  queue.push({
+    id: createOfflineEventId(),
+    path,
+    method,
+    body,
+    queuedAt: new Date().toISOString(),
+    dedupeKey,
+  })
+  writeOfflineMutationQueue(queue)
+}
+
+
+function optimisticMutationResponse(pathname: string, body: string) {
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>
+    const category = typeof parsed.category === 'string' ? parsed.category : ''
+    const relativePath = typeof parsed.relativePath === 'string' ? parsed.relativePath : ''
+
+    if (pathname === '/api/media-tags/item') {
+      return new Response(JSON.stringify({
+        category,
+        relativePath,
+        tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+      }), {
+        status: 202,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-DeepSpace-Queued': '1',
+        },
+      })
+    }
+
+    const state = readArchiveSnapshot(category, relativePath)
+
+    if (pathname === '/api/archive/favorite' && typeof parsed.favorite === 'boolean') {
+      state.favorite = parsed.favorite
+    }
+
+    if (pathname === '/api/archive/rating') {
+      state.rating = typeof parsed.rating === 'number' ? parsed.rating : null
+    }
+
+    if (pathname === '/api/archive/completion' && typeof parsed.completed === 'boolean') {
+      state.completed = parsed.completed
+      if (!parsed.completed) {
+        state.progressSeconds = 0
+      }
+    }
+
+    writeArchiveSnapshot(state)
+    return responseFromArchiveState(state, true)
+  } catch {
+    return new Response(JSON.stringify({ error: 'Unable to queue this offline edit.' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
 }
 
 
@@ -1752,6 +1905,9 @@ function initializeMobileRuntime() {
   let flushingOfflinePlayback =
     false
 
+  let flushingOfflineMutations =
+    false
+
 
   async function sendArchiveProxy(
     targetPath:
@@ -1789,6 +1945,76 @@ function initializeMobileRuntime() {
       }
     )
 
+  }
+
+
+  async function sendGenericNativeRequest(
+    targetPath: string,
+    method: string,
+    body: string
+  ) {
+    const bridge = getMobileBridge()
+    if (!bridge?.apiRequest) {
+      return new Response(JSON.stringify({ error: 'Native API bridge is unavailable.' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    const raw = bridge.apiRequest(JSON.stringify({
+      path: targetPath,
+      method,
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body,
+    }))
+    const result = JSON.parse(raw) as NativeApiResult
+
+    return new Response(result.body ?? '', {
+      status: result.status || 503,
+      headers: { 'Content-Type': result.contentType || 'application/json' },
+    })
+  }
+
+
+  async function flushOfflineMutationQueue() {
+    if (flushingOfflineMutations || !mobileNasConnected) return
+
+    const queue = readOfflineMutationQueue()
+    if (queue.length === 0) return
+
+    flushingOfflineMutations = true
+
+    try {
+      const remaining = [...queue]
+
+      while (remaining.length > 0 && mobileNasConnected) {
+        const mutation = remaining[0]
+        const response = await sendGenericNativeRequest(
+          mutation.path,
+          mutation.method,
+          mutation.body
+        )
+
+        if (response.status === 503) {
+          publishMobileConnection(false)
+          break
+        }
+
+        // A replayed idempotent delete/set can legitimately encounter 404;
+        // queueable mutations here are setters, so only 2xx is acknowledged.
+        if (!response.ok) {
+          console.warn('Queued offline edit could not be replayed:', mutation.path, response.status)
+          break
+        }
+
+        remaining.shift()
+        writeOfflineMutationQueue(remaining)
+      }
+    } catch (error) {
+      console.error('Unable to sync offline edits:', error)
+    } finally {
+      flushingOfflineMutations = false
+    }
   }
 
 
@@ -2126,6 +2352,7 @@ function initializeMobileRuntime() {
           ) {
 
             void flushOfflinePlaybackQueue()
+            void flushOfflineMutationQueue()
 
           }
 
@@ -2259,6 +2486,7 @@ function initializeMobileRuntime() {
           publishMobileConnection(
             true
           )
+          void flushOfflineMutationQueue()
 
 
           return responseFromArchiveState(
@@ -2269,12 +2497,28 @@ function initializeMobileRuntime() {
         }
 
 
-        return sendArchiveProxy(
+        const response = await sendArchiveProxy(
           requestUrl.pathname +
           requestUrl.search,
           method,
           body
         )
+
+        const offline = response.status === 503 || response.headers.get(offlineCacheHeader) === '1'
+        const dedupeKey = queueableOfflineMutation(requestUrl.pathname, method, body)
+
+        if (offline && dedupeKey) {
+          enqueueOfflineMutation(
+            requestUrl.pathname + requestUrl.search,
+            method,
+            body,
+            dedupeKey
+          )
+          publishMobileConnection(false)
+          return optimisticMutationResponse(requestUrl.pathname, body)
+        }
+
+        return response
 
       }
 
@@ -2331,6 +2575,20 @@ function initializeMobileRuntime() {
         ) as NativeApiResult
 
 
+      const dedupeKey = queueableOfflineMutation(requestUrl.pathname, method, body)
+
+      if (!result.connected && (result.status === 0 || result.status === 503) && dedupeKey) {
+        enqueueOfflineMutation(
+          requestUrl.pathname + requestUrl.search,
+          method,
+          body,
+          dedupeKey
+        )
+        publishMobileConnection(false)
+        return optimisticMutationResponse(requestUrl.pathname, body)
+      }
+
+
       if (
         result.connected
       ) {
@@ -2338,6 +2596,7 @@ function initializeMobileRuntime() {
         publishMobileConnection(
           true
         )
+        void flushOfflineMutationQueue()
 
       }
 
@@ -2371,6 +2630,8 @@ function initializeMobileRuntime() {
     '/api/archive/states',
     '/api/archive/stats',
     '/api/playlists',
+    '/api/media-tags',
+    '/api/smart-playlists',
     '/api/library/memoria',
     '/api/library/secret-times',
     '/api/library/myths',
@@ -2848,6 +3109,13 @@ function App() {
           }
         />
 
+        <Route
+          path="/recently-added"
+          element={
+            <RecentlyAddedPage />
+          }
+        />
+
 
         <Route
           path="/rankings"
@@ -2887,13 +3155,20 @@ function App() {
             <PlaylistDetailPage />
           }
         />
-        <Route
-          path="/offline-downloads"
-          element={
-            <OfflineDownloadsPage />
-          }
-        />
-
+        <Route
+
+          path="/offline-downloads"
+
+          element={
+
+            <OfflineDownloadsPage />
+
+          }
+
+        />
+
+
+
 <Route
   path="/phone"
   element={
@@ -2964,6 +3239,13 @@ function App() {
   path="/settings"
   element={
     <SettingsPage />
+  }
+/>
+
+<Route
+  path="/settings/mobile"
+  element={
+    <MobileSettingsPage />
   }
 />
 

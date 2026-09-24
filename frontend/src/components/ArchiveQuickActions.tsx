@@ -739,7 +739,7 @@ export default function ArchiveQuickActions({
         aria-label={`More actions for ${title}`}
         title="More actions"
       >
-        â€¢â€¢â€¢
+        •••
       </summary>
 
 
@@ -798,7 +798,7 @@ export default function ArchiveQuickActions({
             {playlistLoading ? (
 
               <small>
-                Loading playlistsâ€¦
+                Loading playlists…
               </small>
 
             ) : playlists.length ===
@@ -823,7 +823,7 @@ export default function ArchiveQuickActions({
                   }
                 >
                   <option value="">
-                    Choose playlistâ€¦
+                    Choose playlist…
                   </option>
 
                   {playlists.map(

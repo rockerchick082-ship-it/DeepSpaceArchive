@@ -1684,7 +1684,7 @@ function MainStoryChapterPage() {
                       part.title
                     }
                     character={
-                      `${branch.title} Â· ${chapter.title}`
+                      `${branch.title} · ${chapter.title}`
                     }
                     playerPath="/main-story/watch"
                     state={

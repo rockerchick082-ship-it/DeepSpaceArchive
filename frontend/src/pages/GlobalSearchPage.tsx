@@ -31,6 +31,7 @@ import type {
 import {
   MediaTagChips,
 } from '../components/MediaTagControls'
+import BulkMediaActions from '../components/BulkMediaActions'
 
 import {
   useMediaTags,
@@ -92,6 +93,13 @@ function GlobalSearchPage() {
     error,
     setError,
   ] = useState('')
+
+  const [
+    selectedMediaKeys,
+    setSelectedMediaKeys,
+  ] = useState<Set<string>>(
+    () => new Set()
+  )
 
   const {
     tags,
@@ -345,6 +353,19 @@ function GlobalSearchPage() {
     )
 
 
+  const selectedMedia =
+    useMemo(
+      () =>
+        mediaResults.filter(
+          (item) =>
+            selectedMediaKeys.has(
+              `${item.archiveCategory}\u0000${item.relativePath}`
+            )
+        ),
+      [mediaResults, selectedMediaKeys]
+    )
+
+
   const playlistResults =
     useMemo(
       () =>
@@ -467,6 +488,35 @@ function GlobalSearchPage() {
                 </span>
               </header>
 
+              <div className="archive-toolbar-row">
+                <button
+                  type="button"
+                  className="archive-feedback-button"
+                  onClick={() =>
+                    setSelectedMediaKeys(
+                      new Set(
+                        mediaResults.map(
+                          (item) =>
+                            `${item.archiveCategory}\u0000${item.relativePath}`
+                        )
+                      )
+                    )
+                  }
+                >
+                  Select all results
+                </button>
+              </div>
+
+              <BulkMediaActions
+                items={selectedMedia.map((item) => ({
+                  category: item.archiveCategory,
+                  relativePath: item.relativePath,
+                  title: item.title,
+                }))}
+                onClear={() => setSelectedMediaKeys(new Set())}
+                onChanged={loadBaseData}
+              />
+
               <div className="global-search-results">
                 {mediaResults.map(
                   (item) => {
@@ -476,33 +526,52 @@ function GlobalSearchPage() {
                         item.relativePath
                       )
 
+                    const selectionKey =
+                      `${item.archiveCategory}\u0000${item.relativePath}`
+
                     return (
-                      <Link
-                        key={`${item.archiveCategory}\u0000${item.relativePath}`}
-                        to={
-                          archiveIndexPlayerUrl(
-                            item
-                          )
-                        }
-                        className="global-search-result"
+                      <div
+                        key={selectionKey}
+                        className="global-search-result-selectable"
                       >
-                        <div>
-                          <strong>
-                            {item.title}
-                          </strong>
-                          <span>
-                            {[item.character, item.archiveCategory]
-                              .filter(Boolean)
-                              .join(' · ')}
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${item.title}`}
+                          checked={selectedMediaKeys.has(selectionKey)}
+                          onChange={(event) => {
+                            setSelectedMediaKeys((current) => {
+                              const next = new Set(current)
+                              if (event.target.checked) {
+                                next.add(selectionKey)
+                              } else {
+                                next.delete(selectionKey)
+                              }
+                              return next
+                            })
+                          }}
+                        />
+                        <Link
+                          to={archiveIndexPlayerUrl(item)}
+                          className="global-search-result"
+                        >
+                          <div>
+                            <strong>
+                              {item.title}
+                            </strong>
+                            <span>
+                              {[item.character, item.archiveCategory]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </span>
+                            <MediaTagChips
+                              tags={itemTags}
+                            />
+                          </div>
+                          <span className="global-search-result-action">
+                            Play ›
                           </span>
-                          <MediaTagChips
-                            tags={itemTags}
-                          />
-                        </div>
-                        <span className="global-search-result-action">
-                          Play ›
-                        </span>
-                      </Link>
+                        </Link>
+                      </div>
                     )
                   }
                 )}

@@ -445,6 +445,9 @@ It contains:
 - watch progress
 - watch history
 - playlists
+- smart playlists
+- tags and tag assignments
+- pairwise ranking votes
 - Metadata Catalog records
 - Catalog file matches
 - Archive-to-Memory relationships
@@ -537,6 +540,18 @@ mount location changes.
 
     playlistCount:
       archiveData.playlists.length,
+
+    rankingVoteCount:
+      archiveData.rankingVotes.length,
+
+    mediaTagCount:
+      archiveData.mediaTags.length,
+
+    mediaTagAssignmentCount:
+      archiveData.mediaTagAssignments.length,
+
+    smartPlaylistCount:
+      archiveData.smartPlaylists.length,
 
     catalogItemCount:
       catalogData.items.length,

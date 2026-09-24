@@ -5,6 +5,7 @@ import {
 import fs from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import path from 'node:path'
+import AdmZip from 'adm-zip'
 
 import {
   dataDirectory,
@@ -22,6 +23,14 @@ import {
 import {
   scanMainStory,
 } from '../scanner/mainStoryScanner'
+
+import {
+  createArchiveBackup,
+} from '../state/archiveBackup'
+
+import {
+  restoreArchiveBackupMerge,
+} from '../state/archiveRestore'
 
 
 const router =
@@ -734,6 +743,16 @@ router.get(
         ).count
 
 
+      const mediaTagCount =
+        (database.prepare(`SELECT COUNT(*) AS count FROM media_tag`).get() as CountRow).count
+
+      const mediaTagAssignmentCount =
+        (database.prepare(`SELECT COUNT(*) AS count FROM media_tag_assignment`).get() as CountRow).count
+
+      const smartPlaylistCount =
+        (database.prepare(`SELECT COUNT(*) AS count FROM smart_playlist`).get() as CountRow).count
+
+
       const sqliteVersion =
         (
           database
@@ -923,6 +942,15 @@ router.get(
           rankingVotes:
             rankingVoteCount,
 
+          mediaTags:
+            mediaTagCount,
+
+          mediaTagAssignments:
+            mediaTagAssignmentCount,
+
+          smartPlaylists:
+            smartPlaylistCount,
+
         },
 
         libraryConnected:
@@ -1079,6 +1107,135 @@ router.get(
 
     }
 
+  }
+)
+
+
+/*
+ * ========================================
+ * PERSONAL DATA EXPORT / IMPORT
+ * ========================================
+ */
+
+router.get(
+  '/personal-data/export',
+  (request, response) => {
+    try {
+      const backup = createArchiveBackup()
+      const format = String(request.query.format ?? 'json').toLowerCase()
+
+      if (format === 'csv') {
+        const rows: string[][] = [
+          ['record_type', 'category', 'relative_path', 'name', 'value', 'created_at', 'updated_at'],
+        ]
+
+        for (const state of backup.archiveState) {
+          rows.push([
+            'archive_state', state.category, state.relativePath, '',
+            JSON.stringify({
+              favorite: state.favorite, rating: state.rating, playCount: state.playCount,
+              lastWatched: state.lastWatched, progressSeconds: state.progressSeconds,
+              durationSeconds: state.durationSeconds, completed: state.completed,
+              totalWatchSeconds: state.totalWatchSeconds,
+            }), '', state.lastWatched ?? '',
+          ])
+        }
+
+        for (const playlist of backup.playlists) {
+          rows.push(['playlist', '', '', playlist.name, JSON.stringify(playlist.items), playlist.createdAt, playlist.updatedAt])
+        }
+
+        for (const vote of backup.rankingVotes) {
+          rows.push(['ranking_vote', vote.category, '', vote.character, JSON.stringify({ itemA: vote.itemA, itemB: vote.itemB, winner: vote.winner }), vote.createdAt, vote.updatedAt])
+        }
+
+        for (const tag of backup.mediaTags) {
+          rows.push(['tag', '', '', tag.name, '', tag.createdAt, ''])
+        }
+
+        for (const assignment of backup.mediaTagAssignments) {
+          rows.push(['tag_assignment', assignment.category, assignment.relativePath, assignment.tagName, '', assignment.createdAt, ''])
+        }
+
+        for (const playlist of backup.smartPlaylists) {
+          rows.push(['smart_playlist', '', '', playlist.name, JSON.stringify(playlist.rules), playlist.createdAt, playlist.updatedAt])
+        }
+
+        const quote = (value: string) => `"${value.replace(/"/g, '""')}"`
+        const csv = rows.map((row) => row.map(quote).join(',')).join('\r\n') + '\r\n'
+        const date = new Date().toISOString().slice(0, 10)
+        response.setHeader('Content-Type', 'text/csv; charset=utf-8')
+        response.setHeader('Content-Disposition', `attachment; filename="DeepSpaceArchive-PersonalData-${date}.csv"`)
+        response.send(csv)
+        return
+      }
+
+      const date = new Date().toISOString().slice(0, 10)
+      response.setHeader('Content-Type', 'application/json; charset=utf-8')
+      response.setHeader('Content-Disposition', `attachment; filename="DeepSpaceArchive-PersonalData-${date}.json"`)
+      response.send(JSON.stringify(backup, null, 2))
+
+    } catch (error) {
+      console.error('Unable to export personal data:', error)
+      response.status(500).json({ error: 'Unable to export personal data.' })
+    }
+  }
+)
+
+
+router.post(
+  '/personal-data/import',
+  async (request, response) => {
+    const state = request.body
+
+    if (
+      !state ||
+      state.backupFormat !== 'deepspace-archive-backup' ||
+      !Array.isArray(state.archiveState) ||
+      !Array.isArray(state.playlists)
+    ) {
+      response.status(400).json({ error: 'Invalid DeepSpace Archive personal-data export.' })
+      return
+    }
+
+    await fsPromises.mkdir(safetyBackupDirectory, { recursive: true })
+    const tempPath = path.join(
+      safetyBackupDirectory,
+      `personal-data-import-${Date.now()}.zip`
+    )
+
+    try {
+      const zip = new AdmZip()
+      const manifest = {
+        backupFormat: 'deepspace-archive-full-backup',
+        backupVersion: 1,
+        createdAt: state.createdAt ?? new Date().toISOString(),
+        libraryRootNotStored: true,
+        metadataFileCount: 0,
+        customThumbnailCount: 0,
+        archiveStateCount: state.archiveState.length,
+        playlistCount: state.playlists.length,
+        rankingVoteCount: Array.isArray(state.rankingVotes) ? state.rankingVotes.length : 0,
+        mediaTagCount: Array.isArray(state.mediaTags) ? state.mediaTags.length : 0,
+        mediaTagAssignmentCount: Array.isArray(state.mediaTagAssignments) ? state.mediaTagAssignments.length : 0,
+        smartPlaylistCount: Array.isArray(state.smartPlaylists) ? state.smartPlaylists.length : 0,
+      }
+
+      zip.addFile('manifest.json', Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'))
+      zip.addFile('application-state.json', Buffer.from(JSON.stringify(state, null, 2), 'utf8'))
+      zip.writeZip(tempPath)
+
+      const result = await restoreArchiveBackupMerge(tempPath)
+      response.json(result)
+
+    } catch (error) {
+      console.error('Unable to import personal data:', error)
+      response.status(500).json({
+        error: error instanceof Error ? error.message : 'Unable to import personal data.',
+      })
+    } finally {
+      await fsPromises.rm(tempPath, { force: true }).catch(() => undefined)
+    }
   }
 )
 
@@ -1272,6 +1429,16 @@ router.post(
           ).count
 
 
+        const mediaTags =
+          (database.prepare(`SELECT COUNT(*) AS count FROM media_tag`).get() as CountRow).count
+
+        const mediaTagAssignments =
+          (database.prepare(`SELECT COUNT(*) AS count FROM media_tag_assignment`).get() as CountRow).count
+
+        const smartPlaylists =
+          (database.prepare(`SELECT COUNT(*) AS count FROM smart_playlist`).get() as CountRow).count
+
+
         database.exec(
           'BEGIN IMMEDIATE'
         )
@@ -1282,13 +1449,18 @@ router.post(
           database.exec(`
             DELETE FROM playlist_items;
             DELETE FROM playlists;
+            DELETE FROM media_tag_assignment;
+            DELETE FROM media_tag;
+            DELETE FROM smart_playlist;
             DELETE FROM ranking_vote;
             DELETE FROM archive_state;
             DELETE FROM sqlite_sequence
             WHERE name IN (
               'playlists',
               'playlist_items',
-              'ranking_vote'
+              'ranking_vote',
+              'media_tag',
+              'smart_playlist'
             );
           `)
 
@@ -1321,6 +1493,9 @@ router.post(
             playlists,
             playlistItems,
             rankingVotes,
+            mediaTags,
+            mediaTagAssignments,
+            smartPlaylists,
           },
 
           preserved: {

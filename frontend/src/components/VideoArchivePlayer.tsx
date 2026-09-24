@@ -6650,7 +6650,7 @@ useEffect(
 
                         .join(
 
-                          ' Â· '
+                          ' · '
 
                         )}
 
@@ -7752,7 +7752,7 @@ useEffect(
 
       <div className="player-keyboard-hint">
 
-        Keyboard: Space play/pause Â· â†/â†’ 5s Â· J/L 10s Â· P/N previous/next Â· S shuffle Â· M mute Â· F fullscreen Â· [/] speed
+        Keyboard: Space play/pause · ←/→ 5s · J/L 10s · P/N previous/next · S shuffle · M mute · F fullscreen · [/] speed
 
       </div>
 

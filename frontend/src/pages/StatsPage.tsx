@@ -45,9 +45,12 @@ type CategoryStat = {
 type CharacterStat = {
   character: string
   trackedItems: number
+  completedItems: number
   completedPlays: number
   watchSeconds: number
   favorites: number
+  ratedItems: number
+  averageRating: number | null
 }
 
 
@@ -794,6 +797,11 @@ function StatsPage() {
                 trackedItems:
                   states.length,
 
+                completedItems:
+                  states.filter(
+                    (state) => state.completed
+                  ).length,
+
                 completedPlays:
                   completedPlays(
                     states
@@ -809,6 +817,14 @@ function StatsPage() {
                     (state) =>
                       state.favorite
                   ).length,
+
+                ratedItems:
+                  states.filter(
+                    (state) => state.rating !== null
+                  ).length,
+
+                averageRating:
+                  averageRating(states),
               }
 
             }
@@ -1521,6 +1537,10 @@ function StatsPage() {
                               {formatDuration(
                                 stat.watchSeconds
                               )}
+                              {' · '}
+                              {stat.trackedItems > 0
+                                ? `${Math.round((stat.completedItems / stat.trackedItems) * 100)}% complete`
+                                : '0% complete'}
                             </span>
 
                           </div>
@@ -1614,6 +1634,10 @@ function StatsPage() {
                               {formatDuration(
                                 stat.watchSeconds
                               )}
+                              {' · '}
+                              {stat.trackedItems > 0
+                                ? `${Math.round((stat.completedItems / stat.trackedItems) * 100)}% complete`
+                                : '0% complete'}
                             </span>
 
                           </div>
@@ -1987,6 +2011,50 @@ function StatsPage() {
 
               </div>
 
+            </section>
+
+
+            <section className="stats-panel stats-category-table-panel">
+              <div className="stats-panel-heading">
+                <div>
+                  <span className="archive-eyebrow">DETAILS</span>
+                  <h2>Character Summary</h2>
+                </div>
+                <span>{characterStats.length} characters</span>
+              </div>
+
+              <div className="stats-table-scroll">
+                <table className="stats-category-table">
+                  <thead>
+                    <tr>
+                      <th>Character</th>
+                      <th>Tracked</th>
+                      <th>Current Completed</th>
+                      <th>Completion</th>
+                      <th>Completed Plays</th>
+                      <th>Watch Time</th>
+                      <th>Favorites</th>
+                      <th>Rated</th>
+                      <th>Avg Rating</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {characterStats.map((stat) => (
+                      <tr key={stat.character}>
+                        <td><strong>{stat.character}</strong></td>
+                        <td>{stat.trackedItems}</td>
+                        <td>{stat.completedItems}</td>
+                        <td>{stat.trackedItems > 0 ? `${Math.round((stat.completedItems / stat.trackedItems) * 100)}%` : '—'}</td>
+                        <td>{stat.completedPlays}</td>
+                        <td>{formatDuration(stat.watchSeconds)}</td>
+                        <td>{stat.favorites}</td>
+                        <td>{stat.ratedItems}</td>
+                        <td>{stat.averageRating === null ? '—' : `★ ${stat.averageRating.toFixed(2)}`}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
 
 

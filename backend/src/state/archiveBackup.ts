@@ -44,6 +44,26 @@ type PlaylistBackup = {
 }
 
 
+
+type MediaTagBackup = {
+  name: string
+  createdAt: string
+}
+
+type MediaTagAssignmentBackup = {
+  tagName: string
+  category: string
+  relativePath: string
+  createdAt: string
+}
+
+type SmartPlaylistBackup = {
+  name: string
+  rules: unknown
+  createdAt: string
+  updatedAt: string
+}
+
 type RankingVoteBackup = {
   category: string
   character: string
@@ -61,7 +81,7 @@ export type DeepSpaceArchiveBackup = {
     'deepspace-archive-backup'
 
   backupVersion:
-    1
+    2
 
   createdAt:
     string
@@ -71,7 +91,7 @@ export type DeepSpaceArchiveBackup = {
       'DeepSpace Archive'
 
     schemaVersion:
-      1
+      6
   }
 
   archiveState:
@@ -82,6 +102,15 @@ export type DeepSpaceArchiveBackup = {
 
   rankingVotes:
     RankingVoteBackup[]
+
+  mediaTags:
+    MediaTagBackup[]
+
+  mediaTagAssignments:
+    MediaTagAssignmentBackup[]
+
+  smartPlaylists:
+    SmartPlaylistBackup[]
 }
 
 
@@ -114,6 +143,26 @@ type PlaylistItemDatabaseRow = {
   added_at: string
 }
 
+
+
+type MediaTagDatabaseRow = {
+  name: string
+  created_at: string
+}
+
+type MediaTagAssignmentDatabaseRow = {
+  tag_name: string
+  category: string
+  relative_path: string
+  created_at: string
+}
+
+type SmartPlaylistDatabaseRow = {
+  name: string
+  rules_json: string
+  created_at: string
+  updated_at: string
+}
 
 type RankingVoteDatabaseRow = {
   category: string
@@ -319,6 +368,76 @@ export function createArchiveBackup():
 
 
     /* =====================================
+       TAGS
+    ====================================== */
+
+    const mediaTagRows =
+      database.prepare(`
+        SELECT name, created_at
+        FROM media_tag
+        ORDER BY name COLLATE NOCASE ASC
+      `).all() as unknown as MediaTagDatabaseRow[]
+
+    const mediaTags = mediaTagRows.map((row) => ({
+      name: row.name,
+      createdAt: row.created_at,
+    }))
+
+    const mediaTagAssignmentRows =
+      database.prepare(`
+        SELECT
+          media_tag.name AS tag_name,
+          media_tag_assignment.category AS category,
+          media_tag_assignment.relative_path AS relative_path,
+          media_tag_assignment.created_at AS created_at
+        FROM media_tag_assignment
+        JOIN media_tag
+          ON media_tag.id = media_tag_assignment.tag_id
+        ORDER BY
+          media_tag.name COLLATE NOCASE ASC,
+          media_tag_assignment.category COLLATE NOCASE ASC,
+          media_tag_assignment.relative_path COLLATE NOCASE ASC
+      `).all() as unknown as MediaTagAssignmentDatabaseRow[]
+
+    const mediaTagAssignments =
+      mediaTagAssignmentRows.map((row) => ({
+        tagName: row.tag_name,
+        category: row.category,
+        relativePath: row.relative_path,
+        createdAt: row.created_at,
+      }))
+
+    /* =====================================
+       SMART PLAYLISTS
+    ====================================== */
+
+    const smartPlaylistRows =
+      database.prepare(`
+        SELECT name, rules_json, created_at, updated_at
+        FROM smart_playlist
+        ORDER BY name COLLATE NOCASE ASC
+      `).all() as unknown as SmartPlaylistDatabaseRow[]
+
+    const smartPlaylists =
+      smartPlaylistRows.map((row) => {
+        let rules: unknown = {}
+
+        try {
+          rules = JSON.parse(row.rules_json)
+        } catch {
+          rules = {}
+        }
+
+        return {
+          name: row.name,
+          rules,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        }
+      })
+
+
+    /* =====================================
        RANKING VOTES
     ====================================== */
 
@@ -378,7 +497,7 @@ export function createArchiveBackup():
         'deepspace-archive-backup',
 
       backupVersion:
-        1,
+        2,
 
       createdAt:
         new Date()
@@ -390,7 +509,7 @@ export function createArchiveBackup():
           'DeepSpace Archive',
 
         schemaVersion:
-          1,
+          6,
 
       },
 
@@ -399,6 +518,12 @@ export function createArchiveBackup():
       playlists,
 
       rankingVotes,
+
+      mediaTags,
+
+      mediaTagAssignments,
+
+      smartPlaylists,
 
     }
 

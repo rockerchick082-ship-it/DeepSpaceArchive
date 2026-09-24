@@ -26,9 +26,15 @@ import {
   writeArchiveViewState,
 } from '../data/archiveViewState'
 
-import ArchiveQuickActions
-  from './ArchiveQuickActions'
-
+import ArchiveCoverageNotice from './ArchiveCoverageNotice'
+import BulkMediaActions from './BulkMediaActions'
+
+import ArchiveQuickActions
+
+  from './ArchiveQuickActions'
+
+
+
 type PhoneArchivePageProps = {
   title: string
   eyebrow: string
@@ -1180,6 +1186,8 @@ function PhoneArchivePage({
 
       </header>
 
+      <ArchiveCoverageNotice category={category} />
+
 
       <section className="phone-archive-content phone-consistency-content">
 
@@ -1471,6 +1479,15 @@ function PhoneArchivePage({
 
             </div>
 
+            <BulkMediaActions
+              items={filteredItems.map((item) => ({
+                category: item.category,
+                relativePath: item.relativePath,
+                title: item.title,
+              }))}
+              label={`Bulk actions on ${filteredItems.length} shown`}
+              onChanged={loadItems}
+            />
 
             {filteredItems.length >
               0 ? (
@@ -1662,57 +1679,108 @@ function PhoneArchivePage({
                         </button>
 
 
-                        <MediaTagEditor
-                          title={
-                            item.title
-                          }
-                          tags={
-                            tagsFor(
-                              item.category,
-                              item.relativePath
-                            )
-                          }
-                          availableTags={
-                            availableTags
-                          }
-                          onSave={(nextTags) =>
-                            saveTags(
-                              item.category,
-                              item.relativePath,
-                              nextTags
-                            )
-                          }
-                          buttonClassName="phone-media-tag-button"
-                        />
-
-
-                        <ArchiveQuickActions
-                          category={
-                            item.category
-                          }
-                          relativePath={
-                            item.relativePath
-                          }
-                          title={
-                            item.title
-                          }
-                          character={
-                            item.character
-                          }
-                          playerPath="/phone/watch"
-                          state={
-                            state
-                          }
-                          onStateChange={(nextState) =>
-                            setArchiveStates(
-                              (current) => ({
-                                ...current,
-
-                                [key]:
-                                  nextState,
-                              })
-                            )
-                          }
+                        <MediaTagEditor
+
+                          title={
+
+                            item.title
+
+                          }
+
+                          tags={
+
+                            tagsFor(
+
+                              item.category,
+
+                              item.relativePath
+
+                            )
+
+                          }
+
+                          availableTags={
+
+                            availableTags
+
+                          }
+
+                          onSave={(nextTags) =>
+
+                            saveTags(
+
+                              item.category,
+
+                              item.relativePath,
+
+                              nextTags
+
+                            )
+
+                          }
+
+                          buttonClassName="phone-media-tag-button"
+
+                        />
+
+
+
+
+
+                        <ArchiveQuickActions
+
+                          category={
+
+                            item.category
+
+                          }
+
+                          relativePath={
+
+                            item.relativePath
+
+                          }
+
+                          title={
+
+                            item.title
+
+                          }
+
+                          character={
+
+                            item.character
+
+                          }
+
+                          playerPath="/phone/watch"
+
+                          state={
+
+                            state
+
+                          }
+
+                          onStateChange={(nextState) =>
+
+                            setArchiveStates(
+
+                              (current) => ({
+
+                                ...current,
+
+
+
+                                [key]:
+
+                                  nextState,
+
+                              })
+
+                            )
+
+                          }
+
                         />
 
                       </div>

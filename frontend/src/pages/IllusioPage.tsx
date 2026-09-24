@@ -11,6 +11,9 @@ import {
 
 import ArchiveSequenceNav
   from '../components/ArchiveSequenceNav'
+import ArchiveCoverageNotice
+  from '../components/ArchiveCoverageNotice'
+import BulkMediaActions from '../components/BulkMediaActions'
 
 import type {
   Memory,
@@ -32,9 +35,12 @@ import {
 const illusioViewStateKey =
   'illusio'
 
-import ArchiveQuickActions
-  from '../components/ArchiveQuickActions'
-
+import ArchiveQuickActions
+
+  from '../components/ArchiveQuickActions'
+
+
+
 type LibraryResponse = {
   count: number
   items: Memory[]
@@ -425,6 +431,7 @@ function IllusioPage() {
 
       </header>
 
+      <ArchiveCoverageNotice category="Illusio" />
 
       <section className="illusio-page-content">
 
@@ -544,6 +551,14 @@ function IllusioPage() {
 
         </div>
 
+        <BulkMediaActions
+          items={filteredItems.map((item) => ({
+            category: item.category,
+            relativePath: item.relativePath,
+            title: item.title,
+          }))}
+          label={`Bulk actions on ${filteredItems.length} shown`}
+        />
 
         {error && (
 
@@ -641,41 +656,76 @@ function IllusioPage() {
                   </button>
 
 
-                  <MediaTagEditor
-                    title={
-                      item.title
-                    }
-                    tags={
-                      tagsFor(
-                        item.category,
-                        item.relativePath
-                      )
-                    }
-                    availableTags={
-                      availableTags
-                    }
-                    onSave={(nextTags) =>
-                      saveTags(
-                        item.category,
-                        item.relativePath,
-                        nextTags
-                      )
-                    }
-                  />
-
-
-                  <ArchiveQuickActions
-                    category="Illusio"
-                    relativePath={
-                      item.relativePath
-                    }
-                    title={
-                      item.title
-                    }
-                    character={
-                      item.character
-                    }
-                    playerPath="/illusio/watch"
+                  <MediaTagEditor
+
+                    title={
+
+                      item.title
+
+                    }
+
+                    tags={
+
+                      tagsFor(
+
+                        item.category,
+
+                        item.relativePath
+
+                      )
+
+                    }
+
+                    availableTags={
+
+                      availableTags
+
+                    }
+
+                    onSave={(nextTags) =>
+
+                      saveTags(
+
+                        item.category,
+
+                        item.relativePath,
+
+                        nextTags
+
+                      )
+
+                    }
+
+                  />
+
+
+
+
+
+                  <ArchiveQuickActions
+
+                    category="Illusio"
+
+                    relativePath={
+
+                      item.relativePath
+
+                    }
+
+                    title={
+
+                      item.title
+
+                    }
+
+                    character={
+
+                      item.character
+
+                    }
+
+                    playerPath="/illusio/watch"
+
                   />
 
                 </div>

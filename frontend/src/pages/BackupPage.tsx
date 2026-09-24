@@ -12,6 +12,10 @@ type RestorePreview = {
   counts: {
     archiveState: number
     playlists: number
+    rankingVotes: number
+    mediaTags: number
+    mediaTagAssignments: number
+    smartPlaylists: number
     metadata: number
     thumbnails: number
     catalogItems: number
@@ -58,6 +62,17 @@ type RestoreResult = {
     created: number
     merged: number
     itemsAdded: number
+  }
+  rankingVotes: { merged: number }
+  mediaTags: {
+    created: number
+    existing: number
+    assignmentsAdded: number
+    assignmentsExisting: number
+  }
+  smartPlaylists: {
+    created: number
+    merged: number
   }
   metadata: {
     restored: number
@@ -277,6 +292,8 @@ function BackupPage() {
               <span>✓ Watch state, favorites &amp; ratings</span>
               <span>✓ Playlists and playlist order</span>
               <span>✓ Pairwise ranking votes</span>
+              <span>✓ Tags and tag assignments</span>
+              <span>✓ Smart playlists and rules</span>
               <span>✓ Metadata Catalog records</span>
               <span>✓ Catalog file matches</span>
               <span>✓ Archive ↔ Memory relationships</span>
@@ -307,7 +324,7 @@ function BackupPage() {
             </div>
 
             <p className="backup-v2-description">
-              A small human-readable export of watch state, playlists, and ranking votes.
+              A small human-readable export of watch state, playlists, ranking votes, tags, and smart playlists.
               It does not contain Metadata Catalog data, sidecars, or custom artwork.
             </p>
 
@@ -423,6 +440,10 @@ function BackupPage() {
               <div className="backup-v2-count-grid">
                 <div><strong>{preview.counts.archiveState}</strong><span>State Records</span></div>
                 <div><strong>{preview.counts.playlists}</strong><span>Playlists</span></div>
+                <div><strong>{preview.counts.smartPlaylists}</strong><span>Smart Playlists</span></div>
+                <div><strong>{preview.counts.mediaTags}</strong><span>Tags</span></div>
+                <div><strong>{preview.counts.mediaTagAssignments}</strong><span>Tag Assignments</span></div>
+                <div><strong>{preview.counts.rankingVotes}</strong><span>Ranking Votes</span></div>
                 <div><strong>{preview.counts.catalogItems}</strong><span>Catalog Items</span></div>
                 <div><strong>{preview.counts.catalogFileMatches}</strong><span>File Matches</span></div>
                 <div><strong>{preview.counts.catalogMemoryLinks}</strong><span>Memory Links</span></div>
@@ -491,6 +512,12 @@ function BackupPage() {
                     <strong>Playlists:</strong> current order is preserved and missing backup items are appended.
                   </p>
                   <p>
+                    <strong>Tags:</strong> existing tags are preserved and missing assignments are added.
+                  </p>
+                  <p>
+                    <strong>Smart playlists:</strong> missing playlists are added; newer saved rules win when names match.
+                  </p>
+                  <p>
                     <strong>Sidecars &amp; artwork:</strong> existing local files win; missing files are restored only when their media exists.
                   </p>
                   <p>
@@ -527,6 +554,10 @@ function BackupPage() {
                 <div><span>STATE MERGED</span><strong>{restoreResult.archiveState.merged}</strong></div>
                 <div><span>PLAYLISTS CREATED</span><strong>{restoreResult.playlists.created}</strong></div>
                 <div><span>PLAYLIST ITEMS ADDED</span><strong>{restoreResult.playlists.itemsAdded}</strong></div>
+                <div><span>SMART PLAYLISTS ADDED</span><strong>{restoreResult.smartPlaylists.created}</strong></div>
+                <div><span>TAGS ADDED</span><strong>{restoreResult.mediaTags.created}</strong></div>
+                <div><span>TAG LINKS ADDED</span><strong>{restoreResult.mediaTags.assignmentsAdded}</strong></div>
+                <div><span>RANKING VOTES MERGED</span><strong>{restoreResult.rankingVotes.merged}</strong></div>
                 <div><span>SIDECARS RESTORED</span><strong>{restoreResult.metadata.restored}</strong></div>
                 <div><span>ARTWORK RESTORED</span><strong>{restoreResult.thumbnails.restored}</strong></div>
                 <div><span>CATALOG ITEMS ADDED</span><strong>{restoreResult.catalog?.items.created ?? 0}</strong></div>

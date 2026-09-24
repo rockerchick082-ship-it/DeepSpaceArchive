@@ -1742,7 +1742,7 @@ function HomePage() {
             title="New Content Inbox"
           >
             <span aria-hidden="true">
-              â—‰
+              ◉
             </span>
 
             {newContentCount > 0 && (
@@ -1931,7 +1931,7 @@ function HomePage() {
             >
 
               <span className="home-utility-icon">
-                â†“
+                ↓
               </span>
 
               <span>

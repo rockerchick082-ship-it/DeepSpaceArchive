@@ -17,6 +17,9 @@ type PersonalDataCounts = {
   playlists: number
   playlistItems: number
   rankingVotes: number
+  mediaTags: number
+  mediaTagAssignments: number
+  smartPlaylists: number
 }
 
 
@@ -34,6 +37,9 @@ type PersonalDataResetResult = {
     playlists: number
     playlistItems: number
     rankingVotes: number
+    mediaTags: number
+    mediaTagAssignments: number
+    smartPlaylists: number
   }
   preserved: {
     catalog: boolean
@@ -50,6 +56,9 @@ const archiveSnapshotPrefix =
 
 const offlinePlaybackQueueKey =
   'deepspaceArchiveOfflinePlaybackQueue:v1'
+
+const offlineMutationQueueKey =
+  'deepspaceArchiveOfflineMutationQueue:v1'
 
 const mobileProgressStoragePrefix =
   'deepspace-archive-mobile-progress:'
@@ -86,6 +95,8 @@ function clearCurrentDevicePersonalCache() {
       if (
         key ===
           offlinePlaybackQueueKey ||
+        key ===
+          offlineMutationQueueKey ||
         key.startsWith(
           archiveSnapshotPrefix
         ) ||
@@ -121,6 +132,7 @@ async function readError(
       ) as {
         error?: string
       } | null
+
 
 
   return (
@@ -161,12 +173,24 @@ function PersonalDataPage() {
 
 
   const [
+    importing,
+    setImporting,
+  ] =
+    useState(false)
+
+
+  const [
     error,
     setError,
   ] =
     useState(
       ''
     )
+
+  const [
+    message,
+    setMessage,
+  ] = useState('')
 
 
   const [
@@ -283,7 +307,7 @@ function PersonalDataPage() {
 
     const confirmed =
       window.confirm(
-        'Clear all personal archive data?\n\nThis deletes favorites, ratings, watch history, resume progress, completion/play counts, playlists, and ranking votes. Catalog records and file-match links are preserved. A safety snapshot is created first.'
+        'Clear all personal archive data?\n\nThis deletes favorites, ratings, watch history, resume progress, completion/play counts, playlists, smart playlists, tags, tag assignments, and ranking votes. Catalog records and file-match links are preserved. A safety snapshot is created first.'
       )
 
 
@@ -306,6 +330,7 @@ function PersonalDataPage() {
       setError(
         ''
       )
+      setMessage('')
 
 
       setResult(
@@ -387,6 +412,45 @@ function PersonalDataPage() {
 
   }
 
+  function exportPersonalData(format: 'json' | 'csv') {
+    const anchor = document.createElement('a')
+    anchor.href = `/api/database-maintenance/personal-data/export?format=${format}`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  }
+
+
+  async function importPersonalData(file: File | null) {
+    if (!file) return
+
+    try {
+      setImporting(true)
+      setError('')
+      setMessage('')
+      setResult(null)
+
+      const parsed = JSON.parse(await file.text()) as unknown
+      const response = await fetch('/api/database-maintenance/personal-data/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed),
+      })
+
+      if (!response.ok) {
+        throw new Error(await readError(response, 'Unable to import personal data.'))
+      }
+
+      clearCurrentDevicePersonalCache()
+      setMessage('Personal data import merged successfully. Refresh archive pages to see restored state.')
+      await loadCounts()
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : 'Unable to import personal data.')
+    } finally {
+      setImporting(false)
+    }
+  }
+
 
   return (
     <main className="archive-page">
@@ -442,6 +506,15 @@ function PersonalDataPage() {
 
           <div className="settings-status-message settings-status-error">
             {error}
+          </div>
+
+        )}
+
+
+        {message && (
+
+          <div className="settings-status-message settings-status-success">
+            {message}
           </div>
 
         )}
@@ -507,7 +580,64 @@ function PersonalDataPage() {
             <span>Ranking Votes</span>
           </div>
 
+
+          <div>
+            <strong>
+              {loading
+                ? '—'
+                : counts?.smartPlaylists ?? 0}
+            </strong>
+            <span>Smart Playlists</span>
+          </div>
+
+
+          <div>
+            <strong>
+              {loading
+                ? '—'
+                : counts?.mediaTags ?? 0}
+            </strong>
+            <span>Tags</span>
+          </div>
+
+
+          <div>
+            <strong>
+              {loading
+                ? '—'
+                : counts?.mediaTagAssignments ?? 0}
+            </strong>
+            <span>Tag Assignments</span>
+          </div>
+
         </div>
+
+
+        <section className="personal-data-reset-card">
+          <div>
+            <h3>Export / Import Personal Data</h3>
+            <p>
+              Export watch state, favorites, ratings, playlists, rankings, tags, and smart playlists without catalog metadata or media files. JSON exports can be merged back into this or another archive.
+            </p>
+          </div>
+
+          <div className="personal-data-actions">
+            <button type="button" onClick={() => exportPersonalData('json')}>Export JSON</button>
+            <button type="button" onClick={() => exportPersonalData('csv')}>Export CSV</button>
+            <label className="backup-v2-file-picker">
+              <input
+                type="file"
+                accept="application/json,.json"
+                disabled={importing}
+                onChange={(event) => {
+                  void importPersonalData(event.target.files?.[0] ?? null)
+                  event.currentTarget.value = ''
+                }}
+              />
+              <span>{importing ? 'Importing…' : 'Import JSON'}</span>
+            </label>
+          </div>
+        </section>
 
 
         <section className="personal-data-reset-card">
@@ -520,7 +650,7 @@ function PersonalDataPage() {
 
 
             <p>
-              Deletes favorites, ratings, watch history, resume progress, completed/play counts, total watch time, playlists, playlist items, and saved ranking votes.
+              Deletes favorites, ratings, watch history, resume progress, completed/play counts, total watch time, playlists, playlist items, smart playlists, tags, tag assignments, and saved ranking votes.
             </p>
 
 

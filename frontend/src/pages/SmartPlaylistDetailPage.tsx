@@ -755,7 +755,7 @@ function SmartPlaylistDetailPage() {
               )
             }
           >
-            â–¶ Play All
+            ▶ Play All
           </button>
 
           <button
@@ -770,7 +770,7 @@ function SmartPlaylistDetailPage() {
               )
             }
           >
-            â‡„ Shuffle
+            ⇄ Shuffle
           </button>
         </div>
 

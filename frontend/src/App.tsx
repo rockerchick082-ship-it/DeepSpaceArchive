@@ -8,6 +8,8 @@ import {
 } from 'react-router-dom'
 
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useState,
@@ -18,68 +20,368 @@ import type {
 } from 'react'
 
 import HomePage from './pages/HomePage'
-
-import FavoritesPage from './pages/FavoritesPage'
-import ContinueWatchingPage from './pages/ContinueWatchingPage'
-import HistoryPage from './pages/HistoryPage'
-import StatsPage from './pages/StatsPage'
-import RankingPage from './pages/RankingPage'
-import GlobalSearchPage from './pages/GlobalSearchPage'
-
-import PlaylistsPage from './pages/PlaylistsPage'
-import SmartPlaylistsPage from './pages/SmartPlaylistsPage'
-import SmartPlaylistDetailPage from './pages/SmartPlaylistDetailPage'
-import PlaylistDetailPage from './pages/PlaylistDetailPage'
-
-import MemoriaPage from './pages/MemoriaPage'
-import MemoryPlayerPage from './pages/MemoryPlayerPage'
-
-import SecretTimesPage from './pages/SecretTimesPage'
-import SecretTimesPlayerPage from './pages/SecretTimesPlayerPage'
-
-import MythsPage from './pages/MythsPage'
-import MythsPlayerPage from './pages/MythsPlayerPage'
-
-import BondPage from './pages/BondPage'
-import BondPlayerPage from './pages/BondPlayerPage'
-
-import TenderMomentsPage from './pages/TenderMomentsPage'
-import TenderMomentsPlayerPage from './pages/TenderMomentsPlayerPage'
-
-import BackupPage from './pages/BackupPage'
-
-import SettingsPage from './pages/SettingsPage'
-
-import LibraryStatusPage from './pages/LibraryStatusPage'
-import ArchiveCompletenessPage from './pages/ArchiveCompletenessPage'
-import ArchiveIntegrityPage from './pages/ArchiveIntegrityPage'
-import TagManagerPage from './pages/TagManagerPage'
-import NewContentInboxPage from './pages/NewContentInboxPage'
-import MetadataHealthPage from './pages/MetadataHealthPage'
-import ThumbnailCachePage from './pages/ThumbnailCachePage'
-import DatabaseMaintenancePage from './pages/DatabaseMaintenancePage'
-import PersonalDataPage from './pages/PersonalDataPage'
-
-import AboutPage from './pages/AboutPage'
-import MetadataCatalogPage from './pages/MetadataCatalogPage'
-import GalleryPage from './pages/GalleryPage'
-import GalleryWikiSettingsPage from './pages/GalleryWikiSettingsPage'
-import FileLocationsPage from './pages/FileLocationsPage'
 import SetupPage from './pages/SetupPage'
 
 
-import PhonePage from './pages/PhonePage'
-import PhoneCallsPage from './pages/PhoneCallsPage'
-import PhoneVideosPage from './pages/PhoneVideosPage'
-import PhonePlayerPage from './pages/PhonePlayerPage'
+const FavoritesPage =
+  lazy(
+    () =>
+      import(
+        './pages/FavoritesPage'
+      )
+  )
 
-import IllusioPage from './pages/IllusioPage'
-import IllusioPlayerPage from './pages/IllusioPlayerPage'
+const ContinueWatchingPage =
+  lazy(
+    () =>
+      import(
+        './pages/ContinueWatchingPage'
+      )
+  )
 
+const HistoryPage =
+  lazy(
+    () =>
+      import(
+        './pages/HistoryPage'
+      )
+  )
 
-import MainStoryPage from './pages/MainStoryPage'
-import MainStoryChapterPage from './pages/MainStoryChapterPage'
-import MainStoryPlayerPage from './pages/MainStoryPlayerPage'
+const StatsPage =
+  lazy(
+    () =>
+      import(
+        './pages/StatsPage'
+      )
+  )
+
+const RankingPage =
+  lazy(
+    () =>
+      import(
+        './pages/RankingPage'
+      )
+  )
+
+const GlobalSearchPage =
+  lazy(
+    () =>
+      import(
+        './pages/GlobalSearchPage'
+      )
+  )
+
+const PlaylistsPage =
+  lazy(
+    () =>
+      import(
+        './pages/PlaylistsPage'
+      )
+  )
+
+const SmartPlaylistsPage =
+  lazy(
+    () =>
+      import(
+        './pages/SmartPlaylistsPage'
+      )
+  )
+
+const SmartPlaylistDetailPage =
+  lazy(
+    () =>
+      import(
+        './pages/SmartPlaylistDetailPage'
+      )
+  )
+
+const PlaylistDetailPage =
+  lazy(
+    () =>
+      import(
+        './pages/PlaylistDetailPage'
+      )
+  )
+
+const MemoriaPage =
+  lazy(
+    () =>
+      import(
+        './pages/MemoriaPage'
+      )
+  )
+
+const MemoryPlayerPage =
+  lazy(
+    () =>
+      import(
+        './pages/MemoryPlayerPage'
+      )
+  )
+
+const SecretTimesPage =
+  lazy(
+    () =>
+      import(
+        './pages/SecretTimesPage'
+      )
+  )
+
+const SecretTimesPlayerPage =
+  lazy(
+    () =>
+      import(
+        './pages/SecretTimesPlayerPage'
+      )
+  )
+
+const MythsPage =
+  lazy(
+    () =>
+      import(
+        './pages/MythsPage'
+      )
+  )
+
+const MythsPlayerPage =
+  lazy(
+    () =>
+      import(
+        './pages/MythsPlayerPage'
+      )
+  )
+
+const BondPage =
+  lazy(
+    () =>
+      import(
+        './pages/BondPage'
+      )
+  )
+
+const BondPlayerPage =
+  lazy(
+    () =>
+      import(
+        './pages/BondPlayerPage'
+      )
+  )
+
+const TenderMomentsPage =
+  lazy(
+    () =>
+      import(
+        './pages/TenderMomentsPage'
+      )
+  )
+
+const TenderMomentsPlayerPage =
+  lazy(
+    () =>
+      import(
+        './pages/TenderMomentsPlayerPage'
+      )
+  )
+
+const BackupPage =
+  lazy(
+    () =>
+      import(
+        './pages/BackupPage'
+      )
+  )
+
+const SettingsPage =
+  lazy(
+    () =>
+      import(
+        './pages/SettingsPage'
+      )
+  )
+
+const LibraryStatusPage =
+  lazy(
+    () =>
+      import(
+        './pages/LibraryStatusPage'
+      )
+  )
+
+const ArchiveCompletenessPage =
+  lazy(
+    () =>
+      import(
+        './pages/ArchiveCompletenessPage'
+      )
+  )
+
+const ArchiveIntegrityPage =
+  lazy(
+    () =>
+      import(
+        './pages/ArchiveIntegrityPage'
+      )
+  )
+
+const TagManagerPage =
+  lazy(
+    () =>
+      import(
+        './pages/TagManagerPage'
+      )
+  )
+
+const NewContentInboxPage =
+  lazy(
+    () =>
+      import(
+        './pages/NewContentInboxPage'
+      )
+  )
+
+const MetadataHealthPage =
+  lazy(
+    () =>
+      import(
+        './pages/MetadataHealthPage'
+      )
+  )
+
+const ThumbnailCachePage =
+  lazy(
+    () =>
+      import(
+        './pages/ThumbnailCachePage'
+      )
+  )
+
+const DatabaseMaintenancePage =
+  lazy(
+    () =>
+      import(
+        './pages/DatabaseMaintenancePage'
+      )
+  )
+
+const PersonalDataPage =
+  lazy(
+    () =>
+      import(
+        './pages/PersonalDataPage'
+      )
+  )
+
+const AboutPage =
+  lazy(
+    () =>
+      import(
+        './pages/AboutPage'
+      )
+  )
+
+const MetadataCatalogPage =
+  lazy(
+    () =>
+      import(
+        './pages/MetadataCatalogPage'
+      )
+  )
+
+const GalleryPage =
+  lazy(
+    () =>
+      import(
+        './pages/GalleryPage'
+      )
+  )
+
+const GalleryWikiSettingsPage =
+  lazy(
+    () =>
+      import(
+        './pages/GalleryWikiSettingsPage'
+      )
+  )
+
+const FileLocationsPage =
+  lazy(
+    () =>
+      import(
+        './pages/FileLocationsPage'
+      )
+  )
+
+const PhonePage =
+  lazy(
+    () =>
+      import(
+        './pages/PhonePage'
+      )
+  )
+
+const PhoneCallsPage =
+  lazy(
+    () =>
+      import(
+        './pages/PhoneCallsPage'
+      )
+  )
+
+const PhoneVideosPage =
+  lazy(
+    () =>
+      import(
+        './pages/PhoneVideosPage'
+      )
+  )
+
+const PhonePlayerPage =
+  lazy(
+    () =>
+      import(
+        './pages/PhonePlayerPage'
+      )
+  )
+
+const IllusioPage =
+  lazy(
+    () =>
+      import(
+        './pages/IllusioPage'
+      )
+  )
+
+const IllusioPlayerPage =
+  lazy(
+    () =>
+      import(
+        './pages/IllusioPlayerPage'
+      )
+  )
+
+const MainStoryPage =
+  lazy(
+    () =>
+      import(
+        './pages/MainStoryPage'
+      )
+  )
+
+const MainStoryChapterPage =
+  lazy(
+    () =>
+      import(
+        './pages/MainStoryChapterPage'
+      )
+  )
+
+const MainStoryPlayerPage =
+  lazy(
+    () =>
+      import(
+        './pages/MainStoryPlayerPage'
+      )
+  )
 
 
 
@@ -2441,6 +2743,23 @@ function SetupGate({
 }
 
 
+function RouteLoadingFallback() {
+
+  return (
+
+    <main className="setup-page">
+
+      <section className="setup-shell setup-loading">
+        Loading…
+      </section>
+
+    </main>
+
+  )
+
+}
+
+
 function App() {
 
   const ArchiveRouter =
@@ -2458,7 +2777,13 @@ function App() {
 
       <SetupGate>
 
-        <Routes>
+        <Suspense
+          fallback={
+            <RouteLoadingFallback />
+          }
+        >
+
+          <Routes>
 
         <Route
           path="/setup"
@@ -2816,7 +3141,9 @@ function App() {
           }
         />
 
-        </Routes>
+          </Routes>
+
+        </Suspense>
 
       </SetupGate>
 

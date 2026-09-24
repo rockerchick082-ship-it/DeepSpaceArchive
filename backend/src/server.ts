@@ -70,6 +70,11 @@ import {
 } from './services/characterRegistry'
 
 
+import {
+  getLibraryScanCacheStatus,
+  invalidateLibraryScanCache,
+} from './services/libraryScanCache'
+
 dotenv.config()
 
 
@@ -480,6 +485,35 @@ app.get(
 )
 
 
+app.get(
+  '/api/library/cache/status',
+  (_request, response) => {
+
+    response.json(
+      getLibraryScanCacheStatus()
+    )
+
+  }
+)
+
+
+app.post(
+  '/api/library/cache/invalidate',
+  (_request, response) => {
+
+    const clearedEntries =
+      invalidateLibraryScanCache()
+
+
+    response.json({
+      success: true,
+      clearedEntries,
+      ...getLibraryScanCacheStatus(),
+    })
+
+  }
+)
+
 /*
  * ========================================
  * CHARACTER REGISTRY

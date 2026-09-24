@@ -219,7 +219,27 @@ function ArchiveCompletenessPage() {
             setRefreshing(true)
           } else {
             setLoading(true)
+          }          if (
+            refresh
+          ) {
+            const invalidateResponse =
+              await fetch(
+                '/api/library/cache/invalidate',
+                {
+                  method:
+                    'POST',
+                }
+              )
+
+            if (
+              !invalidateResponse.ok
+            ) {
+              throw new Error(
+                'Unable to clear the archive scan cache.'
+              )
+            }
           }
+
 
           const response =
             await fetch(

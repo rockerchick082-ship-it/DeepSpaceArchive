@@ -15,6 +15,10 @@ import {
 } from '../services/archiveDirectoryRules'
 
 
+import {
+  cachedLibraryScan,
+} from '../services/libraryScanCache'
+
 export type LibraryCatalogItem = {
   id: number
   canonicalName: string
@@ -727,7 +731,7 @@ async function scanFolderRecursive(
 }
 
 
-export async function scanCategory(
+async function scanCategoryUncached(
   libraryPath: string,
   category: string
 ): Promise<LibraryItem[]> {
@@ -880,5 +884,33 @@ export async function scanCategory(
 
 
   return results
+
+}
+
+export async function scanCategory(
+  libraryPath: string,
+  category: string
+): Promise<LibraryItem[]> {
+
+  const key =
+    [
+      'category',
+      path.resolve(
+        libraryPath
+      ),
+      category,
+    ].join(
+      ':'
+    )
+
+
+  return cachedLibraryScan(
+    key,
+    () =>
+      scanCategoryUncached(
+        libraryPath,
+        category
+      )
+  )
 
 }

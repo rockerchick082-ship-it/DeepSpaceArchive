@@ -6,6 +6,10 @@ import {
 } from '../services/archiveDirectoryRules'
 
 
+import {
+  cachedLibraryScan,
+} from '../services/libraryScanCache'
+
 const videoExtensions =
   new Set([
     '.mp4',
@@ -921,7 +925,7 @@ async function scanBranch(
  * ========================================
  */
 
-async function scanMainStory(
+async function scanMainStoryUncached(
   libraryRoot: string
 ): Promise<MainStoryBranch[]> {
 
@@ -1044,6 +1048,27 @@ async function scanMainStory(
 }
 
 
-export {
-  scanMainStory,
+export async function scanMainStory(
+  libraryRoot: string
+): Promise<MainStoryBranch[]> {
+
+  const key =
+    [
+      'main-story',
+      path.resolve(
+        libraryRoot
+      ),
+    ].join(
+      ':'
+    )
+
+
+  return cachedLibraryScan(
+    key,
+    () =>
+      scanMainStoryUncached(
+        libraryRoot
+      )
+  )
+
 }

@@ -2,6 +2,10 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 
+import {
+  invalidateLibraryScanCache,
+} from '../services/libraryScanCache'
+
 export type ArchiveMetadata = {
   displayTitle?: string
   releaseDate?: string
@@ -82,6 +86,9 @@ export async function writeArchiveMetadata(
   )
 
 
+  invalidateLibraryScanCache()
+
+
   return metadataPath
 
 }

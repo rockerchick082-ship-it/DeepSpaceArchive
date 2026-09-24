@@ -375,10 +375,34 @@ function LibraryStatusPage() {
               true
             )
 
-          }
-
-
-          const data =
+          }          if (
+            refresh
+          ) {
+
+            const invalidateResponse =
+              await fetch(
+                '/api/library/cache/invalidate',
+                {
+                  method:
+                    'POST',
+                }
+              )
+
+
+            if (
+              !invalidateResponse.ok
+            ) {
+
+              throw new Error(
+                'Unable to clear the library scan cache.'
+              )
+
+            }
+
+          }
+
+
+          const data =
             await fetchLibraryStatus()
 
 

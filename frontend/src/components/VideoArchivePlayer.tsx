@@ -344,6 +344,9 @@ const autoPlayNextStorageKey =
   'deepspace-archive-auto-play-next'
 
 
+const playbackSpeedStorageKey =
+  'deepspace-archive-playback-speed'
+
 const mobileProgressStoragePrefix =
   'deepspace-archive-mobile-progress:'
 
@@ -607,6 +610,50 @@ function getInitialAutoPlayNext() {
 
 }
 
+
+function getInitialPlaybackSpeed() {
+
+  try {
+
+    const stored =
+      Number(
+        localStorage.getItem(
+          playbackSpeedStorageKey
+        )
+      )
+
+
+    if (
+      [
+        0.5,
+        0.75,
+        1,
+        1.25,
+        1.5,
+        1.75,
+        2,
+      ].includes(
+        stored
+      )
+    ) {
+
+      return stored
+
+    }
+
+  } catch (error) {
+
+    console.error(
+      'Unable to read playback speed preference:',
+      error
+    )
+
+  }
+
+
+  return 1
+
+}
 
 function VideoArchivePlayer({
   categoryLabel,
@@ -901,7 +948,9 @@ function VideoArchivePlayer({
 
 
   const [playbackSpeed, setPlaybackSpeed] =
-    useState(1)
+    useState(
+      getInitialPlaybackSpeed
+    )
 
 
   const [loopVideo, setLoopVideo] =
@@ -1074,7 +1123,51 @@ useEffect(
   ]
 )
 
-  useEffect(() => {
+    useEffect(
+    () => {
+
+      try {
+
+        localStorage.setItem(
+          playbackSpeedStorageKey,
+          String(
+            playbackSpeed
+          )
+        )
+
+      } catch (error) {
+
+        console.error(
+          'Unable to save playback speed preference:',
+          error
+        )
+
+      }
+
+
+      const video =
+        videoRef.current
+
+
+      if (
+        video
+      ) {
+
+        video.defaultPlaybackRate =
+          playbackSpeed
+
+        video.playbackRate =
+          playbackSpeed
+
+      }
+
+    },
+    [
+      playbackSpeed,
+    ]
+  )
+
+useEffect(() => {
 
     lastProgressSaveRef.current =
       0
@@ -4651,9 +4744,28 @@ useEffect(
           autoPlay={!audioOnly}
           playsInline
           preload="auto"
-          onLoadedMetadata={
-            restoreProgress
-          }
+          onLoadedMetadata={() => {
+
+            const video =
+              videoRef.current
+
+
+            if (
+              video
+            ) {
+
+              video.defaultPlaybackRate =
+                playbackSpeed
+
+              video.playbackRate =
+                playbackSpeed
+
+            }
+
+
+            restoreProgress()
+
+          }}
           onPlay={() => {
 
             if (
@@ -5344,6 +5456,9 @@ useEffect(
               if (
                 videoRef.current
               ) {
+
+                videoRef.current.defaultPlaybackRate =
+                  speed
 
                 videoRef.current.playbackRate =
                   speed

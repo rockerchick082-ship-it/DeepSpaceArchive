@@ -32785,4 +32785,82 @@ html[data-dsa-mobile="true"] .player-audio-only-icon {
   .new-content-status-badge {
     align-self: flex-start;
   }
+}
+/* ========================================
+   CARD TAG ICON CONSISTENCY
+======================================== */
+
+.memory-card-actions .media-tag-edit-button {
+  width:
+    34px;
+
+  min-width:
+    34px;
+
+  height:
+    32px;
+
+  min-height:
+    32px;
+
+  padding:
+    0;
+
+  display:
+    inline-grid;
+
+  place-items:
+    center;
+
+  border-color:
+    rgba(255, 255, 255, 0.3);
+
+  border-radius:
+    999px;
+
+  background:
+    rgba(15, 16, 24, 0.72);
+
+  backdrop-filter:
+    blur(12px);
+
+  font-size:
+    0;
+
+  line-height:
+    1;
+}
+
+
+.memory-card-actions .media-tag-edit-button::before {
+  content:
+    '#';
+
+  font-size:
+    1rem;
+
+  font-weight:
+    500;
+
+  line-height:
+    1;
+}
+
+
+.memory-card-actions .media-tag-edit-button:hover {
+  background:
+    rgba(255, 255, 255, 0.18);
+}
+
+
+@media (hover: none) {
+
+  .memory-card-actions .media-tag-edit-button {
+    opacity:
+      1;
+
+    transform:
+      none;
+  }
+
 }

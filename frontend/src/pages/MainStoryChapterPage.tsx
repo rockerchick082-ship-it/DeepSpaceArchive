@@ -13,6 +13,9 @@ import { useMediaTags } from '../data/mediaTags'
 import { MediaTagChips, MediaTagEditor } from '../components/MediaTagControls'
 
 
+import ArchiveQuickActions
+  from '../components/ArchiveQuickActions'
+
 type MainStoryPart = {
   id: string
   title: string
@@ -1648,27 +1651,55 @@ function MainStoryChapterPage() {
                   </button>
 
 
-                  <MediaTagEditor
-                    title={
-                      part.title
-                    }
-                    tags={
-                      tagsFor(
-                        'Main Story',
-                        relativePath
-                      )
-                    }
-                    availableTags={
-                      availableTags
-                    }
-                    onSave={(nextTags) =>
-                      saveTags(
-                        'Main Story',
-                        relativePath,
-                        nextTags
-                      )
-                    }
-                    buttonClassName="main-story-tag-button"
+                  <MediaTagEditor
+                    title={
+                      part.title
+                    }
+                    tags={
+                      tagsFor(
+                        'Main Story',
+                        relativePath
+                      )
+                    }
+                    availableTags={
+                      availableTags
+                    }
+                    onSave={(nextTags) =>
+                      saveTags(
+                        'Main Story',
+                        relativePath,
+                        nextTags
+                      )
+                    }
+                    buttonClassName="main-story-tag-button"
+                  />
+
+
+                  <ArchiveQuickActions
+                    category="Main Story"
+                    relativePath={
+                      relativePath
+                    }
+                    title={
+                      part.title
+                    }
+                    character={
+                      `${branch.title} Â· ${chapter.title}`
+                    }
+                    playerPath="/main-story/watch"
+                    state={
+                      state
+                    }
+                    onStateChange={(nextState) =>
+                      setArchiveStates(
+                        (current) => ({
+                          ...current,
+
+                          [relativePath]:
+                            nextState,
+                        })
+                      )
+                    }
                   />
 
                 </div>

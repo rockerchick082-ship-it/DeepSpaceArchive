@@ -6,8 +6,9 @@ import {
   getArchiveState,
   getArchiveStats,
   listArchiveStates,
-  mergeOfflinePlaybackEvents,
-  resetCompletion,
+  mergeOfflinePlaybackEvents,
+  resetCompletion,
+  setCompletion,
   saveProgress,
   setFavorite,
   setRating,
@@ -266,6 +267,58 @@ router.post(
 )
 
 
+router.post(
+  '/completion',
+  (request, response) => {
+
+    const identity =
+      readIdentity(
+        request.body
+      )
+
+
+    if (!identity) {
+
+      response.status(400).json({
+        error:
+          'category and relativePath are required',
+      })
+
+      return
+
+    }
+
+
+    if (
+      typeof request.body.completed !==
+        'boolean'
+    ) {
+
+      response.status(400).json({
+        error:
+          'completed must be true or false',
+      })
+
+      return
+
+    }
+
+
+    const state =
+      setCompletion(
+        identity.category,
+        identity.relativePath,
+        request.body.completed
+      )
+
+
+    response.json(
+      state
+    )
+
+  }
+)
+
 router.post(
   '/restart',
   (request, response) => {

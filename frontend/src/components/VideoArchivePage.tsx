@@ -21,6 +21,16 @@ import { useMediaTags } from '../data/mediaTags'
 import { MediaTagChips, MediaTagEditor } from './MediaTagControls'
 
 
+import {
+  readArchiveViewState,
+  restoreArchiveScroll,
+  saveArchiveScroll,
+  writeArchiveViewState,
+} from '../data/archiveViewState'
+
+import ArchiveQuickActions
+  from './ArchiveQuickActions'
+
 const characterStorageKey =
   'deepspace-archive-selected-character'
 
@@ -388,6 +398,38 @@ function VideoArchivePage({
   allowEditing = false,
 }: VideoArchivePageProps) {
 
+  const viewStateKey =
+    `video:${apiEndpoint}`
+
+
+  const initialViewState =
+    useMemo(
+      () =>
+        readArchiveViewState(
+          viewStateKey,
+          {
+            character:
+              getInitialArchiveCharacter(),
+
+            search:
+              '',
+
+            status:
+              'all',
+
+            tag:
+              'All',
+
+            sort:
+              'archive-order',
+          }
+        ),
+      [
+        viewStateKey,
+      ]
+    )
+
+
   const navigate =
     useNavigate()
 
@@ -430,7 +472,7 @@ function VideoArchivePage({
     setSelectedCharacter,
   ] =
     useState(
-      getInitialArchiveCharacter
+      initialViewState.character
     )
 
   const [
@@ -438,32 +480,28 @@ function VideoArchivePage({
     setSearchText,
   ] =
     useState(
-      ''
+      initialViewState.search
     )
 
   const [
     statusFilter,
     setStatusFilter,
   ] =
-    useState<ArchiveStatusFilter>(
-      'all'
-    )
+    useState<ArchiveStatusFilter>(initialViewState.status as ArchiveStatusFilter)
 
   const [
     selectedTag,
     setSelectedTag,
   ] =
     useState(
-      'All'
+      initialViewState.tag
     )
 
   const [
     sortMode,
     setSortMode,
   ] =
-    useState<ArchiveSort>(
-      'archive-order'
-    )
+    useState<ArchiveSort>(initialViewState.sort as ArchiveSort)
 
   const [
     loading,
@@ -652,6 +690,98 @@ function VideoArchivePage({
     ]
   )
 
+
+  useEffect(
+    () => {
+
+      writeArchiveViewState(
+        viewStateKey,
+        {
+          character:
+            selectedCharacter,
+
+          search:
+            searchText,
+
+          status:
+            statusFilter,
+
+          tag:
+            selectedTag,
+
+          sort:
+            sortMode,
+        }
+      )
+
+    },
+    [
+      searchText,
+      selectedCharacter,
+      selectedTag,
+      sortMode,
+      statusFilter,
+      viewStateKey,
+    ]
+  )
+
+
+  useEffect(
+    () => {
+
+      if (
+        loading
+      ) {
+
+        return
+
+      }
+
+
+      const restoreTimer =
+        window.setTimeout(
+          () =>
+            restoreArchiveScroll(
+              viewStateKey
+            ),
+          0
+        )
+
+
+      const save =
+        () =>
+          saveArchiveScroll(
+            viewStateKey
+          )
+
+
+      window.addEventListener(
+        'pagehide',
+        save
+      )
+
+
+      return () => {
+
+        window.clearTimeout(
+          restoreTimer
+        )
+
+        window.removeEventListener(
+          'pagehide',
+          save
+        )
+
+        save()
+
+      }
+
+    },
+    [
+      loading,
+      viewStateKey,
+    ]
+  )
 
   const fetchItems =
     useCallback(
@@ -1664,11 +1794,24 @@ function VideoArchivePage({
                       nasConnected={
                         nasConnected
                       }
-                      downloaded={
-                        downloadedPaths.has(
-                          item.relativePath
-                        )
-                      }
+                      downloaded={
+                        downloadedPaths.has(
+                          item.relativePath
+                        )
+                      }
+                      playerPath={
+                        playerPath
+                      }
+                      onStateChange={(nextState) =>
+                        setArchiveStates(
+                          (current) => ({
+                            ...current,
+
+                            [key]:
+                              nextState,
+                          })
+                        )
+                      }
                       onOpen={() =>
                         openItem(
                           item
@@ -1775,10 +1918,15 @@ type VideoArchiveCardProps = {
   favoriteSaving: boolean
   isMobileApp: boolean
   nasConnected: boolean
-  downloaded: boolean
+  downloaded: boolean
+  playerPath: string
   onOpen: () => void
   onEdit: () => void
-  onToggleFavorite: () => void
+  onToggleFavorite: () => void
+  onStateChange: (
+    state:
+      ArchiveStateSummary
+  ) => void
 }
 
 
@@ -1792,10 +1940,12 @@ function VideoArchiveCard({
   favoriteSaving,
   isMobileApp,
   nasConnected,
-  downloaded,
-  onOpen,
-  onEdit,
-  onToggleFavorite,
+  downloaded,
+  playerPath,
+  onOpen,
+  onEdit,
+  onToggleFavorite,
+  onStateChange,
 }: VideoArchiveCardProps) {
 
   const customThumbnailUrl =
@@ -2435,19 +2585,44 @@ function VideoArchiveCard({
         </button>
 
 
-        <MediaTagEditor
-          title={
-            item.title
-          }
-          tags={
-            tags
-          }
-          availableTags={
-            availableTags
-          }
-          onSave={
-            onSaveTags
-          }
+        <MediaTagEditor
+          title={
+            item.title
+          }
+          tags={
+            tags
+          }
+          availableTags={
+            availableTags
+          }
+          onSave={
+            onSaveTags
+          }
+        />
+
+
+        <ArchiveQuickActions
+          category={
+            item.category
+          }
+          relativePath={
+            item.relativePath
+          }
+          title={
+            item.title
+          }
+          character={
+            item.character
+          }
+          playerPath={
+            playerPath
+          }
+          state={
+            archiveState
+          }
+          onStateChange={
+            onStateChange
+          }
         />
 
 

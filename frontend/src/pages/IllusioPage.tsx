@@ -21,6 +21,20 @@ import { useMediaTags } from '../data/mediaTags'
 import { MediaTagChips, MediaTagEditor } from '../components/MediaTagControls'
 
 
+import {
+  readArchiveViewState,
+  restoreArchiveScroll,
+  saveArchiveScroll,
+  writeArchiveViewState,
+} from '../data/archiveViewState'
+
+
+const illusioViewStateKey =
+  'illusio'
+
+import ArchiveQuickActions
+  from '../components/ArchiveQuickActions'
+
 type LibraryResponse = {
   count: number
   items: Memory[]
@@ -28,6 +42,25 @@ type LibraryResponse = {
 
 
 function IllusioPage() {
+
+  const initialViewState =
+    useMemo(
+      () =>
+        readArchiveViewState(
+          illusioViewStateKey,
+          {
+            character:
+              'All',
+
+            search:
+              '',
+
+            tag:
+              'All',
+          }
+        ),
+      []
+    )
 
   const navigate =
     useNavigate()
@@ -62,7 +95,7 @@ function IllusioPage() {
     setSelectedCharacter,
   ] =
     useState(
-      'All'
+      initialViewState.character
     )
 
 
@@ -71,7 +104,7 @@ function IllusioPage() {
     setSearchText,
   ] =
     useState(
-      ''
+      initialViewState.search
     )
 
   const [
@@ -79,7 +112,7 @@ function IllusioPage() {
     setSelectedTag,
   ] =
     useState(
-      'All'
+      initialViewState.tag
     )
 
 
@@ -100,6 +133,88 @@ function IllusioPage() {
       ''
     )
 
+
+  useEffect(
+    () => {
+
+      writeArchiveViewState(
+        illusioViewStateKey,
+        {
+          character:
+            selectedCharacter,
+
+          search:
+            searchText,
+
+          tag:
+            selectedTag,
+        }
+      )
+
+    },
+    [
+      searchText,
+      selectedCharacter,
+      selectedTag,
+    ]
+  )
+
+
+  useEffect(
+    () => {
+
+      if (
+        loading
+      ) {
+
+        return
+
+      }
+
+
+      const restoreTimer =
+        window.setTimeout(
+          () =>
+            restoreArchiveScroll(
+              illusioViewStateKey
+            ),
+          0
+        )
+
+
+      const save =
+        () =>
+          saveArchiveScroll(
+            illusioViewStateKey
+          )
+
+
+      window.addEventListener(
+        'pagehide',
+        save
+      )
+
+
+      return () => {
+
+        window.clearTimeout(
+          restoreTimer
+        )
+
+        window.removeEventListener(
+          'pagehide',
+          save
+        )
+
+        save()
+
+      }
+
+    },
+    [
+      loading,
+    ]
+  )
 
   useEffect(
     () => {
@@ -526,26 +641,41 @@ function IllusioPage() {
                   </button>
 
 
-                  <MediaTagEditor
-                    title={
-                      item.title
-                    }
-                    tags={
-                      tagsFor(
-                        item.category,
-                        item.relativePath
-                      )
-                    }
-                    availableTags={
-                      availableTags
-                    }
-                    onSave={(nextTags) =>
-                      saveTags(
-                        item.category,
-                        item.relativePath,
-                        nextTags
-                      )
-                    }
+                  <MediaTagEditor
+                    title={
+                      item.title
+                    }
+                    tags={
+                      tagsFor(
+                        item.category,
+                        item.relativePath
+                      )
+                    }
+                    availableTags={
+                      availableTags
+                    }
+                    onSave={(nextTags) =>
+                      saveTags(
+                        item.category,
+                        item.relativePath,
+                        nextTags
+                      )
+                    }
+                  />
+
+
+                  <ArchiveQuickActions
+                    category="Illusio"
+                    relativePath={
+                      item.relativePath
+                    }
+                    title={
+                      item.title
+                    }
+                    character={
+                      item.character
+                    }
+                    playerPath="/illusio/watch"
                   />
 
                 </div>

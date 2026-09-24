@@ -30,6 +30,32 @@ import { useMediaTags } from '../data/mediaTags'
 import { MediaTagChips, MediaTagEditor } from './MediaTagControls'
 
 
+import {
+
+  clearPlaybackQueue,
+
+  playbackQueueItemUrl,
+
+  readPlaybackQueue,
+
+  replacePlaybackQueue,
+
+  shiftPlaybackQueue,
+
+  subscribePlaybackQueue,
+
+} from '../data/playbackQueue'
+
+
+
+import type {
+
+  PlaybackQueueItem,
+
+} from '../data/playbackQueue'
+
+
+
 declare global {
   interface Window {
     DeepSpaceArchiveMobile?: {
@@ -346,6 +372,326 @@ const autoPlayNextStorageKey =
 
 const playbackSpeedStorageKey =
   'deepspace-archive-playback-speed'
+
+type SleepTimerMode =
+
+  | 'off'
+
+  | '15'
+
+  | '30'
+
+  | '45'
+
+  | '60'
+
+  | 'end'
+
+
+
+
+
+type StoredSleepTimer = {
+
+  mode: SleepTimerMode
+
+  deadline: number | null
+
+}
+
+
+
+
+
+const sleepTimerStorageKey =
+
+  'deepspace-archive-sleep-timer'
+
+
+
+
+
+function readStoredSleepTimer():
+
+  StoredSleepTimer {
+
+
+
+  try {
+
+
+
+    const raw =
+
+      sessionStorage.getItem(
+
+        sleepTimerStorageKey
+
+      )
+
+
+
+
+
+    if (!raw) {
+
+
+
+      return {
+
+        mode:
+
+          'off',
+
+
+
+        deadline:
+
+          null,
+
+      }
+
+
+
+    }
+
+
+
+
+
+    const parsed =
+
+      JSON.parse(
+
+        raw
+
+      ) as
+
+        Partial<
+
+          StoredSleepTimer
+
+        >
+
+
+
+
+
+    const mode =
+
+      [
+
+        'off',
+
+        '15',
+
+        '30',
+
+        '45',
+
+        '60',
+
+        'end',
+
+      ].includes(
+
+        String(
+
+          parsed.mode
+
+        )
+
+      )
+
+        ? parsed.mode as
+
+            SleepTimerMode
+
+        : 'off'
+
+
+
+
+
+    const deadline =
+
+      Number.isFinite(
+
+        parsed.deadline
+
+      )
+
+        ? Number(
+
+            parsed.deadline
+
+          )
+
+        : null
+
+
+
+
+
+    if (
+
+      deadline !==
+
+        null &&
+
+      deadline <=
+
+        Date.now()
+
+    ) {
+
+
+
+      sessionStorage.removeItem(
+
+        sleepTimerStorageKey
+
+      )
+
+
+
+
+
+      return {
+
+        mode:
+
+          'off',
+
+
+
+        deadline:
+
+          null,
+
+      }
+
+
+
+    }
+
+
+
+
+
+    return {
+
+      mode,
+
+      deadline,
+
+    }
+
+
+
+  } catch {
+
+
+
+    return {
+
+      mode:
+
+        'off',
+
+
+
+      deadline:
+
+        null,
+
+    }
+
+
+
+  }
+
+
+
+}
+
+
+
+
+
+function storeSleepTimer(
+
+  mode:
+
+    SleepTimerMode,
+
+  deadline:
+
+    number | null
+
+) {
+
+
+
+  try {
+
+
+
+    if (
+
+      mode ===
+
+        'off'
+
+    ) {
+
+
+
+      sessionStorage.removeItem(
+
+        sleepTimerStorageKey
+
+      )
+
+
+
+      return
+
+
+
+    }
+
+
+
+
+
+    sessionStorage.setItem(
+
+      sleepTimerStorageKey,
+
+      JSON.stringify({
+
+        mode,
+
+        deadline,
+
+      })
+
+    )
+
+
+
+  } catch {
+
+    // Sleep timer persistence is best-effort.
+
+  }
+
+
+
+}
+
+
 
 const mobileProgressStoragePrefix =
   'deepspace-archive-mobile-progress:'
@@ -892,9 +1238,30 @@ function VideoArchivePlayer({
 
 
   const handleVideoEndedRef =
+
     useRef<() => Promise<void>>(
+
       async () => {}
+
     )
+
+
+
+
+
+  const keyboardActionsRef =
+
+    useRef({
+
+      next: () => {},
+
+      previous: () => {},
+
+      shuffle: () => {},
+
+      playbackSpeed: 1,
+
+    })
 
 
   const restartHandledRef =
@@ -981,12 +1348,314 @@ function VideoArchivePlayer({
     )
 
   const [
+
     autoPlayNext,
+
     setAutoPlayNext,
+
   ] =
+
     useState(
+
       getInitialAutoPlayNext
+
     )
+
+
+
+
+
+  const initialSleepTimerRef =
+
+    useRef(
+
+      readStoredSleepTimer()
+
+    )
+
+
+
+
+
+  const [
+
+    sleepTimerMode,
+
+    setSleepTimerMode,
+
+  ] =
+
+    useState<SleepTimerMode>(
+
+      initialSleepTimerRef
+
+        .current
+
+        .mode
+
+    )
+
+
+
+
+
+  const [
+
+    sleepTimerDeadline,
+
+    setSleepTimerDeadline,
+
+  ] =
+
+    useState<number | null>(
+
+      initialSleepTimerRef
+
+        .current
+
+        .deadline
+
+    )
+
+
+
+
+
+  const [
+
+    upNext,
+
+    setUpNext,
+
+  ] =
+
+    useState<
+
+      PlaybackQueueItem[]
+
+    >(
+
+      readPlaybackQueue
+
+    )
+
+  useEffect(
+
+    () => {
+
+
+
+      const refresh =
+
+        () =>
+
+          setUpNext(
+
+            readPlaybackQueue()
+
+          )
+
+
+
+
+
+      return subscribePlaybackQueue(
+
+        refresh
+
+      )
+
+
+
+    },
+
+    []
+
+  )
+
+
+
+
+
+  useEffect(
+
+    () => {
+
+
+
+      if (
+
+        sleepTimerMode ===
+
+          'off' ||
+
+        sleepTimerMode ===
+
+          'end' ||
+
+        sleepTimerDeadline ===
+
+          null
+
+      ) {
+
+
+
+        return
+
+
+
+      }
+
+
+
+
+
+      const remaining =
+
+        Math.max(
+
+          0,
+
+          sleepTimerDeadline -
+
+          Date.now()
+
+        )
+
+
+
+
+
+      const timer =
+
+        window.setTimeout(
+
+          () => {
+
+
+
+            const video =
+
+              videoRef.current
+
+
+
+
+
+            video?.pause()
+
+
+
+
+
+            if (
+
+              audioOnlyRef.current
+
+            ) {
+
+
+
+              try {
+
+
+
+                window.DeepSpaceArchiveMobile
+
+                  ?.stopAudioOnlyPlayback?.()
+
+
+
+              } catch {
+
+                // Native background playback is best-effort.
+
+              }
+
+
+
+
+
+              audioOnlyRef.current =
+
+                false
+
+
+
+              setAudioOnly(
+
+                false
+
+              )
+
+
+
+            }
+
+
+
+
+
+            setSleepTimerMode(
+
+              'off'
+
+            )
+
+
+
+            setSleepTimerDeadline(
+
+              null
+
+            )
+
+
+
+            storeSleepTimer(
+
+              'off',
+
+              null
+
+            )
+
+
+
+          },
+
+          remaining
+
+        )
+
+
+
+
+
+      return () =>
+
+        window.clearTimeout(
+
+          timer
+
+        )
+
+
+
+    },
+
+    [
+
+      sleepTimerDeadline,
+
+      sleepTimerMode,
+
+    ]
+
+  )
+
+
 
   useEffect(
     () => {
@@ -2959,7 +3628,34 @@ useEffect(() => {
         }
 
       handleVideoEndedRef.current =
+
         handleVideoEnded
+
+
+
+      keyboardActionsRef.current = {
+
+        next:
+
+          playNextPreferred,
+
+
+
+        previous:
+
+          playPreviousPreferred,
+
+
+
+        shuffle:
+
+          shufflePreferred,
+
+
+
+        playbackSpeed,
+
+      }
 
     }
   )
@@ -3710,6 +4406,592 @@ useEffect(() => {
   )
 
 
+  // keyboardHookMovedAboveEarlyReturn
+useEffect(
+
+    () => {
+
+
+
+      function handleKeyboard(
+
+        event:
+
+          KeyboardEvent
+
+      ) {
+
+        const target =
+
+          event.target as
+
+            HTMLElement |
+
+            null
+
+
+
+
+
+        if (
+
+          target &&
+
+          (
+
+            target.tagName ===
+
+              'INPUT' ||
+
+            target.tagName ===
+
+              'TEXTAREA' ||
+
+            target.tagName ===
+
+              'SELECT' ||
+
+            target.isContentEditable
+
+          )
+
+        ) {
+
+
+
+          return
+
+
+
+        }
+
+
+
+
+
+        const video =
+
+          videoRef.current
+
+
+
+
+
+        const key =
+
+          event.key
+
+            .toLocaleLowerCase()
+
+
+
+
+
+        if (
+
+          key ===
+
+            ' '
+
+        ) {
+
+
+
+          if (!video) {
+
+            return
+
+          }
+
+
+
+
+
+          event.preventDefault()
+
+
+
+
+
+          if (
+
+            video.paused
+
+          ) {
+
+
+
+            void video.play()
+
+
+
+          } else {
+
+
+
+            video.pause()
+
+
+
+          }
+
+
+
+
+
+          return
+
+
+
+        }
+
+
+
+
+
+        if (
+
+          key ===
+
+            'arrowleft' ||
+
+          key ===
+
+            'arrowright' ||
+
+          key ===
+
+            'j' ||
+
+          key ===
+
+            'l'
+
+        ) {
+
+
+
+          if (!video) {
+
+            return
+
+          }
+
+
+
+
+
+          event.preventDefault()
+
+
+
+
+
+          const amount =
+
+            key ===
+
+              'arrowleft'
+
+              ? -5
+
+              : key ===
+
+                  'arrowright'
+
+                ? 5
+
+                : key ===
+
+                    'j'
+
+                  ? -10
+
+                  : 10
+
+
+
+
+
+          const duration =
+
+            Number.isFinite(
+
+              video.duration
+
+            )
+
+              ? video.duration
+
+              : Number.MAX_SAFE_INTEGER
+
+
+
+
+
+          video.currentTime =
+
+            Math.max(
+
+              0,
+
+              Math.min(
+
+                duration,
+
+                video.currentTime +
+
+                amount
+
+              )
+
+            )
+
+
+
+
+
+          return
+
+
+
+        }
+
+
+
+
+
+        if (
+
+          key ===
+
+            'f'
+
+        ) {
+
+
+
+          event.preventDefault()
+
+
+
+          void video
+
+            ?.requestFullscreen?.()
+
+
+
+
+
+          return
+
+
+
+        }
+
+
+
+
+
+        if (
+
+          key ===
+
+            'm'
+
+        ) {
+
+
+
+          if (video) {
+
+
+
+            event.preventDefault()
+
+
+
+            video.muted =
+
+              !video.muted
+
+
+
+          }
+
+
+
+
+
+          return
+
+
+
+        }
+
+
+
+
+
+        if (
+
+          key ===
+
+            'n'
+
+        ) {
+
+
+
+          event.preventDefault()
+
+
+
+          keyboardActionsRef.current.next()
+
+
+
+          return
+
+
+
+        }
+
+
+
+
+
+        if (
+
+          key ===
+
+            'p'
+
+        ) {
+
+
+
+          event.preventDefault()
+
+
+
+          keyboardActionsRef.current.previous()
+
+
+
+          return
+
+
+
+        }
+
+
+
+
+
+        if (
+
+          key ===
+
+            's'
+
+        ) {
+
+
+
+          event.preventDefault()
+
+
+
+          keyboardActionsRef.current.shuffle()
+
+
+
+          return
+
+
+
+        }
+
+
+
+
+
+        if (
+
+          key ===
+
+            '[' ||
+
+          key ===
+
+            ']'
+
+        ) {
+
+
+
+          event.preventDefault()
+
+
+
+
+
+          const speeds = [
+
+            0.5,
+
+            0.75,
+
+            1,
+
+            1.25,
+
+            1.5,
+
+            1.75,
+
+            2,
+
+          ]
+
+
+
+
+
+          const currentIndex =
+
+            speeds.indexOf(
+
+              keyboardActionsRef.current.playbackSpeed
+
+            )
+
+
+
+
+
+          const nextIndex =
+
+            key ===
+
+              ']'
+
+              ? Math.min(
+
+                  speeds.length - 1,
+
+                  currentIndex +
+
+                    1
+
+                )
+
+              : Math.max(
+
+                  0,
+
+                  currentIndex -
+
+                    1
+
+                )
+
+
+
+
+
+          const speed =
+
+            speeds[
+
+              nextIndex
+
+            ] ??
+
+            keyboardActionsRef.current.playbackSpeed
+
+
+
+
+
+          setPlaybackSpeed(
+
+            speed
+
+          )
+
+
+
+
+
+          if (video) {
+
+
+
+            video.defaultPlaybackRate =
+
+              speed
+
+
+
+            video.playbackRate =
+
+              speed
+
+
+
+          }
+
+
+
+        }
+
+
+
+      }
+
+
+
+
+
+      window.addEventListener(
+
+        'keydown',
+
+        handleKeyboard
+
+      )
+
+
+
+
+
+      return () => {
+
+
+
+        window.removeEventListener(
+
+          'keydown',
+
+          handleKeyboard
+
+        )
+
+
+
+      }
+
+
+
+    },
+
+    []
+
+  )
+
+
   if (loading) {
 
     return (
@@ -4086,6 +5368,172 @@ useEffect(() => {
       storyBranchTitle
 
 
+  function changeSleepTimer(
+
+    mode:
+
+      SleepTimerMode
+
+  ) {
+
+
+
+    if (
+
+      mode ===
+
+        'off'
+
+    ) {
+
+
+
+      setSleepTimerMode(
+
+        'off'
+
+      )
+
+
+
+      setSleepTimerDeadline(
+
+        null
+
+      )
+
+
+
+      storeSleepTimer(
+
+        'off',
+
+        null
+
+      )
+
+
+
+
+
+      return
+
+
+
+    }
+
+
+
+
+
+    if (
+
+      mode ===
+
+        'end'
+
+    ) {
+
+
+
+      setSleepTimerMode(
+
+        'end'
+
+      )
+
+
+
+      setSleepTimerDeadline(
+
+        null
+
+      )
+
+
+
+      storeSleepTimer(
+
+        'end',
+
+        null
+
+      )
+
+
+
+
+
+      return
+
+
+
+    }
+
+
+
+
+
+    const minutes =
+
+      Number(
+
+        mode
+
+      )
+
+
+
+
+
+    const deadline =
+
+      Date.now() +
+
+      (
+
+        minutes *
+
+        60 *
+
+        1000
+
+      )
+
+
+
+
+
+    setSleepTimerMode(
+
+      mode
+
+    )
+
+
+
+    setSleepTimerDeadline(
+
+      deadline
+
+    )
+
+
+
+    storeSleepTimer(
+
+      mode,
+
+      deadline
+
+    )
+
+
+
+  }
+
+
+
  function openNormalItem(
   selectedItem: ArchiveItem
 ) {
@@ -4286,6 +5734,264 @@ useEffect(() => {
   }
 
 
+  function openQueuedItem(
+
+    queueItem:
+
+      PlaybackQueueItem
+
+  ) {
+
+
+
+    navigate(
+
+      playbackQueueItemUrl(
+
+        queueItem
+
+      )
+
+    )
+
+
+
+  }
+
+
+
+
+
+  function playNextPreferred() {
+
+
+
+    const queued =
+
+      shiftPlaybackQueue()
+
+
+
+
+
+    if (
+
+      queued
+
+    ) {
+
+
+
+      setUpNext(
+
+        readPlaybackQueue()
+
+      )
+
+
+
+      openQueuedItem(
+
+        queued
+
+      )
+
+
+
+
+
+      return
+
+
+
+    }
+
+
+
+
+
+    if (
+
+      playlistMode
+
+    ) {
+
+
+
+      if (
+
+        nextPlaylistItem
+
+      ) {
+
+
+
+        openPlaylistItem(
+
+          nextPlaylistItem
+
+        )
+
+
+
+      }
+
+
+
+
+
+      return
+
+
+
+    }
+
+
+
+
+
+    if (
+
+      nextItem
+
+    ) {
+
+
+
+      openNormalItem(
+
+        nextItem
+
+      )
+
+
+
+    }
+
+
+
+  }
+
+
+
+
+
+  function playPreviousPreferred() {
+
+
+
+    if (
+
+      playlistMode
+
+    ) {
+
+
+
+      if (
+
+        previousPlaylistItem
+
+      ) {
+
+
+
+        openPlaylistItem(
+
+          previousPlaylistItem
+
+        )
+
+
+
+      }
+
+
+
+
+
+      return
+
+
+
+    }
+
+
+
+
+
+    if (
+
+      previousItem
+
+    ) {
+
+
+
+      openNormalItem(
+
+        previousItem
+
+      )
+
+
+
+    }
+
+
+
+  }
+
+
+
+
+
+  function shufflePreferred() {
+
+
+
+    if (
+
+      playlistMode
+
+    ) {
+
+
+
+      shufflePlaylistItem()
+
+
+
+      return
+
+
+
+    }
+
+
+
+
+
+    if (
+
+      !sequenceMode
+
+    ) {
+
+
+
+      shuffleNormalItem()
+
+
+
+    }
+
+
+
+  }
+
+
+
   async function handleVideoEnded() {
 
     backgroundPlaybackDesiredRef.current =
@@ -4322,11 +6028,65 @@ useEffect(() => {
 
 
     restartHandledRef.current =
+
       false
 
 
+
+
+
     if (
+
+      sleepTimerMode ===
+
+        'end'
+
+    ) {
+
+
+
+      setSleepTimerMode(
+
+        'off'
+
+      )
+
+
+
+      setSleepTimerDeadline(
+
+        null
+
+      )
+
+
+
+      storeSleepTimer(
+
+        'off',
+
+        null
+
+      )
+
+
+
+
+
+      return
+
+
+
+    }
+
+
+
+
+
+    if (
+
       loopVideo
+
     ) {
 
       const video =
@@ -4464,11 +6224,61 @@ useEffect(() => {
     }
 
 
+    const queued =
+
+      shiftPlaybackQueue()
+
+
+
+
+
     if (
-      !autoPlayNext
+
+      queued
+
     ) {
 
+
+
+      setUpNext(
+
+        readPlaybackQueue()
+
+      )
+
+
+
+      openQueuedItem(
+
+        queued
+
+      )
+
+
+
+
+
       return
+
+
+
+    }
+
+
+
+
+
+    if (
+
+      !autoPlayNext
+
+    ) {
+
+
+
+      return
+
+
 
     }
 
@@ -4509,7 +6319,7 @@ useEffect(() => {
 
 
 
-  const mediaQuery =
+    const mediaQuery =
     new URLSearchParams({
       relativePath:
         currentRelativePath,
@@ -4654,6 +6464,220 @@ useEffect(() => {
         </section>
 
       )}
+
+
+      {upNext.length > 0 && (
+
+
+
+        <section className="player-up-next">
+
+
+
+          <header>
+
+
+
+            <div>
+
+
+
+              <span className="archive-eyebrow">
+
+                UP NEXT
+
+              </span>
+
+
+
+              <strong>
+
+                {upNext.length} queued
+
+              </strong>
+
+
+
+            </div>
+
+
+
+
+
+            <button
+
+              type="button"
+
+              onClick={() => {
+
+
+
+                clearPlaybackQueue()
+
+
+
+                setUpNext(
+
+                  []
+
+                )
+
+
+
+              }}
+
+            >
+
+              Clear Queue
+
+            </button>
+
+
+
+          </header>
+
+
+
+
+
+          <div className="player-up-next-list">
+
+
+
+            {upNext
+
+              .slice(
+
+                0,
+
+                6
+
+              )
+
+              .map(
+
+                (
+
+                  queueItem,
+
+                  index
+
+                ) => (
+
+
+
+                  <button
+
+                    type="button"
+
+                    key={
+
+                      `${queueItem.category}:${queueItem.relativePath}:${index}`
+
+                    }
+
+                    onClick={() => {
+
+
+
+                      replacePlaybackQueue(
+
+                        upNext.filter(
+
+                          (
+
+                            _candidate,
+
+                            candidateIndex
+
+                          ) =>
+
+                            candidateIndex !==
+
+                              index
+
+                        )
+
+                      )
+
+
+
+                      setUpNext(
+
+                        readPlaybackQueue()
+
+                      )
+
+
+
+                      openQueuedItem(
+
+                        queueItem
+
+                      )
+
+
+
+                    }}
+
+                  >
+
+
+
+                    <strong>
+
+                      {queueItem.title}
+
+                    </strong>
+
+
+
+                    <span>
+
+                      {[
+
+                        queueItem.character,
+
+                        queueItem.category,
+
+                      ]
+
+                        .filter(
+
+                          Boolean
+
+                        )
+
+                        .join(
+
+                          ' Â· '
+
+                        )}
+
+                    </span>
+
+
+
+                  </button>
+
+
+
+                )
+
+              )}
+
+
+
+          </div>
+
+
+
+        </section>
+
+
+
+      )}
+
 
 
       <div className="player-source-info">
@@ -5249,14 +7273,18 @@ useEffect(() => {
 
           <button
             className="player-nav-button player-nav-next"
-            onClick={() =>
-              nextPlaylistItem &&
-              openPlaylistItem(
-                nextPlaylistItem
-              )
+            onClick={
+
+              playNextPreferred
+
             }
+
             disabled={
+
+              upNext.length === 0 &&
+
               !nextPlaylistItem
+
             }
           >
 
@@ -5368,14 +7396,18 @@ useEffect(() => {
 
           <button
             className="player-nav-button player-nav-next"
-            onClick={() =>
-              nextItem &&
-              openNormalItem(
-                nextItem
-              )
+            onClick={
+
+              playNextPreferred
+
             }
+
             disabled={
+
+              upNext.length === 0 &&
+
               !nextItem
+
             }
           >
 
@@ -5500,9 +7532,108 @@ useEffect(() => {
 
         </label>
 
+
+
+
+
+        <label className="player-control">
+
+
+
+          <span>
+
+            Sleep Timer
+
+          </span>
+
+
+
+
+
+          <select
+
+            value={
+
+              sleepTimerMode
+
+            }
+
+            onChange={(event) =>
+
+              changeSleepTimer(
+
+                event.target.value as
+
+                  SleepTimerMode
+
+              )
+
+            }
+
+          >
+
+            <option value="off">
+
+              Off
+
+            </option>
+
+
+
+            <option value="15">
+
+              15 minutes
+
+            </option>
+
+
+
+            <option value="30">
+
+              30 minutes
+
+            </option>
+
+
+
+            <option value="45">
+
+              45 minutes
+
+            </option>
+
+
+
+            <option value="60">
+
+              1 hour
+
+            </option>
+
+
+
+            <option value="end">
+
+              End of current item
+
+            </option>
+
+          </select>
+
+
+
+        </label>
+
+
+
+
+
         <button
+
           type="button"
+
           className={
+
             autoPlayNext
               ? 'player-toggle active'
               : 'player-toggle'
@@ -5617,6 +7748,14 @@ useEffect(() => {
         </button>
 
       </section>
+
+
+      <div className="player-keyboard-hint">
+
+        Keyboard: Space play/pause Â· â†/â†’ 5s Â· J/L 10s Â· P/N previous/next Â· S shuffle Â· M mute Â· F fullscreen Â· [/] speed
+
+      </div>
+
 
 
       <section className="player-details">

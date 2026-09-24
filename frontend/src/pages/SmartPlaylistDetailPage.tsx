@@ -5,9 +5,10 @@ import {
   useState,
 } from 'react'
 
-import {
-  Link,
-  useParams,
+import {
+  Link,
+  useNavigate,
+  useParams,
 } from 'react-router-dom'
 
 import type {
@@ -43,6 +44,11 @@ import {
 } from '../data/mediaTags'
 
 
+import {
+  archiveIndexToQueueItem,
+  replacePlaybackQueue,
+} from '../data/playbackQueue'
+
 function stateKey(
   category: string,
   relativePath: string
@@ -159,9 +165,14 @@ function matchesRules(
 }
 
 
-function SmartPlaylistDetailPage() {
-  const {
-    id,
+function SmartPlaylistDetailPage() {
+
+  const navigate =
+    useNavigate()
+
+
+  const {
+    id,
   } = useParams()
 
   const numericId =
@@ -362,6 +373,94 @@ function SmartPlaylistDetailPage() {
     )
 
 
+  function playMatched(
+    shuffle:
+      boolean
+  ) {
+
+    if (
+      matched.length ===
+        0
+    ) {
+
+      return
+
+    }
+
+
+    const ordered =
+      [
+        ...matched,
+      ]
+
+
+    if (shuffle) {
+
+      for (
+        let index =
+          ordered.length - 1;
+        index >
+          0;
+        index -=
+          1
+      ) {
+
+        const swapIndex =
+          Math.floor(
+            Math.random() *
+            (
+              index +
+              1
+            )
+          )
+
+
+        const current =
+          ordered[
+            index
+          ]
+
+
+        ordered[
+          index
+        ] =
+          ordered[
+            swapIndex
+          ]
+
+
+        ordered[
+          swapIndex
+        ] =
+          current
+
+      }
+
+    }
+
+
+    const [
+      first,
+      ...rest
+    ] =
+      ordered
+
+
+    replacePlaybackQueue(
+      rest.map(
+        archiveIndexToQueueItem
+      )
+    )
+
+
+    navigate(
+      archiveIndexPlayerUrl(
+        first
+      )
+    )
+
+  }
+
   async function saveRules() {
     if (
       !playlist ||
@@ -633,18 +732,51 @@ function SmartPlaylistDetailPage() {
         </section>
       )}
 
-      <section className="smart-playlist-results-heading">
-        <div>
-          <strong>
-            {matched.length}
-          </strong>
-          <span>
-            matching media item{matched.length === 1 ? '' : 's'}
-          </span>
-        </div>
-        <p>
-          This list is generated live. Nothing is copied into the playlist.
-        </p>
+      <section className="smart-playlist-results-heading">
+        <div>
+          <strong>
+            {matched.length}
+          </strong>
+          <span>
+            matching media item{matched.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        <div className="smart-playlist-play-actions">
+          <button
+            type="button"
+            disabled={
+              matched.length ===
+                0
+            }
+            onClick={() =>
+              playMatched(
+                false
+              )
+            }
+          >
+            â–¶ Play All
+          </button>
+
+          <button
+            type="button"
+            disabled={
+              matched.length ===
+                0
+            }
+            onClick={() =>
+              playMatched(
+                true
+              )
+            }
+          >
+            â‡„ Shuffle
+          </button>
+        </div>
+
+        <p>
+          This list is generated live. Nothing is copied into the playlist.
+        </p>
       </section>
 
       {matched.length === 0 ? (

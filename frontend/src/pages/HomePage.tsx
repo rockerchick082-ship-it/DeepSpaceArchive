@@ -339,12 +339,21 @@ function HomePage() {
     )
 
 
-  const [
-    nasConnected,
-    setNasConnected,
-  ] =
-    useState(
-      true
+  const [
+    nasConnected,
+    setNasConnected,
+  ] =
+    useState(
+      true
+    )
+
+
+  const [
+    newContentCount,
+    setNewContentCount,
+  ] =
+    useState(
+      0
     )
 
 
@@ -459,6 +468,87 @@ function HomePage() {
   )
 
 
+  useEffect(
+    () => {
+
+      let cancelled =
+        false
+
+
+      async function loadNewContentCount() {
+
+        try {
+
+          const response =
+            await fetch(
+              '/api/catalog/inbox'
+            )
+
+
+          if (
+            !response.ok
+          ) {
+
+            return
+
+          }
+
+
+          const data =
+            await response.json() as {
+              summary?: {
+                total?: number
+              }
+            }
+
+
+          if (
+            !cancelled
+          ) {
+
+            setNewContentCount(
+              Number(
+                data.summary
+                  ?.total ??
+                0
+              ) ||
+              0
+            )
+
+          }
+
+        } catch {
+          // Home notifications are best-effort.
+        }
+
+      }
+
+
+      void loadNewContentCount()
+
+
+      window.addEventListener(
+        'focus',
+        loadNewContentCount
+      )
+
+
+      return () => {
+
+        cancelled =
+          true
+
+        window.removeEventListener(
+          'focus',
+          loadNewContentCount
+        )
+
+      }
+
+    },
+    []
+  )
+
   /*
    * =====================================
    * LOAD HOME MEDIA FROM THE LIBRARY
@@ -1635,8 +1725,36 @@ function HomePage() {
         </div>
 
 
-        <div className="home-top-actions">
-
+        <div className="home-top-actions">
+
+          <Link
+            to="/settings/new-content"
+            className={
+              newContentCount > 0
+                ? 'home-inbox-button active'
+                : 'home-inbox-button'
+            }
+            aria-label={
+              newContentCount > 0
+                ? `${newContentCount} new archive item${newContentCount === 1 ? '' : 's'}`
+                : 'New Content Inbox'
+            }
+            title="New Content Inbox"
+          >
+            <span aria-hidden="true">
+              â—‰
+            </span>
+
+            {newContentCount > 0 && (
+              <strong>
+                {newContentCount > 99
+                  ? '99+'
+                  : newContentCount}
+              </strong>
+            )}
+          </Link>
+
+
           <CharacterSelector
             selectedCharacter={
               selectedCharacter
@@ -1805,9 +1923,29 @@ function HomePage() {
           </Link>
 
 
-          <Link
-            to="/favorites"
-            className="home-utility-link"
+          {isMobileApp && (
+
+            <Link
+              to="/offline-downloads"
+              className="home-utility-link"
+            >
+
+              <span className="home-utility-icon">
+                â†“
+              </span>
+
+              <span>
+                Offline Downloads
+              </span>
+
+            </Link>
+
+          )}
+
+
+          <Link
+            to="/favorites"
+            className="home-utility-link"
           >
 
             <span className="home-utility-icon">

@@ -13,6 +13,8 @@ import {
 import { useArchiveCharacters } from '../hooks/useArchiveCharacters'
 import { useMediaTags } from '../data/mediaTags'
 
+import ArchiveQuickActions
+  from './ArchiveQuickActions'
 import ArchiveStateCard
   from './ArchiveStateCard'
 
@@ -27,7 +29,8 @@ import {
   canonicalArchiveCategory,
   fallbackArchiveTitle,
   fetchPersonalArchiveData,
-  getPersonalArchivePlayerUrl,
+  getPersonalArchivePlayerUrl,
+  getPersonalArchiveSource,
   personalArchiveKey,
   personalArchiveSources,
 } from '../data/personalArchive'
@@ -36,6 +39,13 @@ import type {
   PersonalArchiveEntry,
 } from '../data/personalArchive'
 
+
+import {
+  readArchiveViewState,
+  restoreArchiveScroll,
+  saveArchiveScroll,
+  writeArchiveViewState,
+} from '../data/archiveViewState'
 
 type PersonalArchiveMode =
   | 'favorites'
@@ -241,6 +251,37 @@ function PersonalArchivePage({
   eyebrow,
 }: PersonalArchivePageProps) {
 
+  const viewStateKey =
+    `personal:${mode}`
+
+
+  const initialViewState =
+    useMemo(
+      () =>
+        readArchiveViewState(
+          viewStateKey,
+          {
+            character:
+              'All',
+
+            category:
+              'All',
+
+            tag:
+              'All',
+
+            search:
+              '',
+
+            sort:
+              'recent',
+          }
+        ),
+      [
+        viewStateKey,
+      ]
+    )
+
   const { characters: discoveredCharacters } = useArchiveCharacters()
 
   const {
@@ -326,7 +367,7 @@ function PersonalArchivePage({
     setSelectedCharacter,
   ] =
     useState(
-      'All'
+      initialViewState.character
     )
 
 
@@ -335,7 +376,7 @@ function PersonalArchivePage({
     setSelectedCategory,
   ] =
     useState(
-      'All'
+      initialViewState.category
     )
 
 
@@ -344,7 +385,7 @@ function PersonalArchivePage({
     setSelectedTag,
   ] =
     useState(
-      'All'
+      initialViewState.tag
     )
 
 
@@ -353,7 +394,7 @@ function PersonalArchivePage({
     setSearchText,
   ] =
     useState(
-      ''
+      initialViewState.search
     )
 
 
@@ -361,12 +402,100 @@ function PersonalArchivePage({
     sortMode,
     setSortMode,
   ] =
-    useState<
-      PersonalSortMode
-    >(
-      'recent'
-    )
+    useState<PersonalSortMode>(initialViewState.sort as PersonalSortMode)
 
+
+  useEffect(
+    () => {
+
+      writeArchiveViewState(
+        viewStateKey,
+        {
+          character:
+            selectedCharacter,
+
+          category:
+            selectedCategory,
+
+          tag:
+            selectedTag,
+
+          search:
+            searchText,
+
+          sort:
+            sortMode,
+        }
+      )
+
+    },
+    [
+      searchText,
+      selectedCategory,
+      selectedCharacter,
+      selectedTag,
+      sortMode,
+      viewStateKey,
+    ]
+  )
+
+
+  useEffect(
+    () => {
+
+      if (
+        loading
+      ) {
+
+        return
+
+      }
+
+
+      const restoreTimer =
+        window.setTimeout(
+          () =>
+            restoreArchiveScroll(
+              viewStateKey
+            ),
+          0
+        )
+
+
+      const save =
+        () =>
+          saveArchiveScroll(
+            viewStateKey
+          )
+
+
+      window.addEventListener(
+        'pagehide',
+        save
+      )
+
+
+      return () => {
+
+        window.clearTimeout(
+          restoreTimer
+        )
+
+        window.removeEventListener(
+          'pagehide',
+          save
+        )
+
+        save()
+
+      }
+
+    },
+    [
+      loading,
+      viewStateKey,
+    ]
+  )
 
   const loadData =
     useCallback(
@@ -1432,29 +1561,85 @@ function PersonalArchivePage({
 
         <div className="personal-entry-actions">
 
-          <MediaTagEditor
-            title={
-              getEntryTitle(
-                entry
-              )
-            }
-            tags={
-              tagsFor(
-                entry.state.category,
-                entry.state.relativePath
-              )
-            }
-            availableTags={
-              availableTags
-            }
-            onSave={(nextTags) =>
-              saveTags(
-                entry.state.category,
-                entry.state.relativePath,
-                nextTags
-              )
-            }
-          />
+          <MediaTagEditor
+            title={
+              getEntryTitle(
+                entry
+              )
+            }
+            tags={
+              tagsFor(
+                entry.state.category,
+                entry.state.relativePath
+              )
+            }
+            availableTags={
+              availableTags
+            }
+            onSave={(nextTags) =>
+              saveTags(
+                entry.state.category,
+                entry.state.relativePath,
+                nextTags
+              )
+            }
+          />
+
+
+          {entry.item &&
+            getPersonalArchiveSource(
+              entry.state.category
+            ) && (
+
+            <ArchiveQuickActions
+              category={
+                entry.state.category
+              }
+              relativePath={
+                entry.state.relativePath
+              }
+              title={
+                getEntryTitle(
+                  entry
+                )
+              }
+              character={
+                entry.item.character
+              }
+              playerPath={
+                getPersonalArchiveSource(
+                  entry.state.category
+                )?.playerPath ??
+                ''
+              }
+              state={
+                entry.state
+              }
+              onStateChange={(nextState) =>
+                setEntries(
+                  (current) =>
+                    current.map(
+                      (candidate) =>
+                        personalArchiveKey(
+                          candidate.state.category,
+                          candidate.state.relativePath
+                        ) ===
+                        personalArchiveKey(
+                          nextState.category,
+                          nextState.relativePath
+                        )
+                          ? {
+                              ...candidate,
+                              state:
+                                nextState,
+                            }
+                          : candidate
+                    )
+                )
+              }
+            />
+
+          )}
 
           {mode ===
             'favorites' ? (

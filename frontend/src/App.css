@@ -32864,3 +32864,720 @@ html[data-dsa-mobile="true"] .player-audio-only-icon {
   }
 
 }
+
+/* ========================================
+   QOL: SMART PLAYLIST PLAY ACTIONS
+======================================== */
+
+.smart-playlist-play-actions {
+  display:
+    flex;
+
+  flex-wrap:
+    wrap;
+
+  gap:
+    10px;
+}
+
+
+.smart-playlist-play-actions button {
+  min-height:
+    38px;
+
+  padding:
+    8px 14px;
+
+  border:
+    1px solid rgba(255, 255, 255, 0.2);
+
+  border-radius:
+    999px;
+
+  background:
+    rgba(255, 255, 255, 0.07);
+
+  color:
+    white;
+
+  cursor:
+    pointer;
+}
+
+
+.smart-playlist-play-actions button:hover:not(:disabled) {
+  background:
+    rgba(255, 255, 255, 0.14);
+}
+
+
+.smart-playlist-play-actions button:disabled {
+  cursor:
+    default;
+
+  opacity:
+    0.4;
+}
+/* ========================================
+   QOL: HOME INBOX BADGE
+======================================== */
+
+.home-inbox-button {
+  position:
+    relative;
+
+  width:
+    38px;
+
+  height:
+    38px;
+
+  display:
+    inline-grid;
+
+  place-items:
+    center;
+
+  border:
+    1px solid rgba(255, 255, 255, 0.2);
+
+  border-radius:
+    999px;
+
+  background:
+    rgba(15, 16, 24, 0.58);
+
+  color:
+    white;
+
+  text-decoration:
+    none;
+}
+
+
+.home-inbox-button.active {
+  border-color:
+    rgba(255, 216, 92, 0.55);
+
+  color:
+    rgb(255, 226, 116);
+}
+
+
+.home-inbox-button strong {
+  position:
+    absolute;
+
+  top:
+    -7px;
+
+  right:
+    -8px;
+
+  min-width:
+    20px;
+
+  height:
+    20px;
+
+  padding:
+    0 5px;
+
+  display:
+    grid;
+
+  place-items:
+    center;
+
+  border-radius:
+    999px;
+
+  background:
+    rgb(173, 58, 83);
+
+  color:
+    white;
+
+  font-size:
+    0.65rem;
+
+  line-height:
+    1;
+}
+
+
+/* ========================================
+   QOL: OFFLINE DOWNLOAD MANAGER
+======================================== */
+
+.offline-download-toolbar {
+  display:
+    flex;
+
+  flex-wrap:
+    wrap;
+
+  gap:
+    10px;
+
+  margin-bottom:
+    20px;
+}
+
+
+.offline-download-toolbar input {
+  flex:
+    1 1 260px;
+
+  min-height:
+    42px;
+
+  padding:
+    10px 13px;
+
+  border:
+    1px solid rgba(255, 255, 255, 0.15);
+
+  border-radius:
+    12px;
+
+  background:
+    rgba(255, 255, 255, 0.05);
+
+  color:
+    white;
+}
+
+
+.offline-download-toolbar button,
+.offline-download-row button {
+  min-height:
+    38px;
+
+  padding:
+    8px 13px;
+
+  border:
+    1px solid rgba(255, 255, 255, 0.18);
+
+  border-radius:
+    10px;
+
+  background:
+    rgba(255, 255, 255, 0.07);
+
+  color:
+    white;
+
+  cursor:
+    pointer;
+}
+
+
+.offline-download-danger {
+  border-color:
+    rgba(255, 103, 123, 0.32) !important;
+
+  color:
+    rgba(255, 176, 188, 0.98) !important;
+}
+
+
+.offline-download-list {
+  display:
+    grid;
+
+  gap:
+    10px;
+}
+
+
+.offline-download-row {
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  justify-content:
+    space-between;
+
+  gap:
+    18px;
+
+  padding:
+    14px 16px;
+
+  border:
+    1px solid rgba(255, 255, 255, 0.11);
+
+  border-radius:
+    14px;
+
+  background:
+    rgba(255, 255, 255, 0.035);
+}
+
+
+.offline-download-row label {
+  min-width:
+    0;
+
+  flex:
+    1;
+
+  display:
+    flex;
+
+  align-items:
+    flex-start;
+
+  gap:
+    12px;
+}
+
+
+.offline-download-row label div {
+  min-width:
+    0;
+
+  display:
+    grid;
+
+  gap:
+    4px;
+}
+
+
+.offline-download-row span,
+.offline-download-row code {
+  opacity:
+    0.6;
+}
+
+
+.offline-download-row code {
+  overflow-wrap:
+    anywhere;
+
+  font-size:
+    0.72rem;
+}
+
+
+@media (max-width: 700px) {
+
+  .offline-download-row {
+    align-items:
+      stretch;
+
+    flex-direction:
+      column;
+  }
+
+
+  .offline-download-row button {
+    width:
+      100%;
+  }
+
+}
+/* ========================================
+   QOL: CARD QUICK ACTIONS
+======================================== */
+
+.archive-quick-actions {
+  position:
+    relative;
+}
+
+
+.archive-quick-actions > summary {
+  width:
+    34px;
+
+  height:
+    32px;
+
+  display:
+    grid;
+
+  place-items:
+    center;
+
+  border:
+    1px solid rgba(255, 255, 255, 0.3);
+
+  border-radius:
+    999px;
+
+  background:
+    rgba(15, 16, 24, 0.72);
+
+  backdrop-filter:
+    blur(12px);
+
+  color:
+    white;
+
+  cursor:
+    pointer;
+
+  font-size:
+    0.85rem;
+
+  line-height:
+    1;
+
+  list-style:
+    none;
+}
+
+
+.archive-quick-actions > summary::-webkit-details-marker {
+  display:
+    none;
+}
+
+
+.archive-quick-actions-menu {
+  position:
+    absolute;
+
+  top:
+    calc(100% + 8px);
+
+  right:
+    0;
+
+  z-index:
+    30;
+
+  width:
+    min(230px, 78vw);
+
+  padding:
+    8px;
+
+  display:
+    grid;
+
+  gap:
+    4px;
+
+  border:
+    1px solid rgba(255, 255, 255, 0.16);
+
+  border-radius:
+    14px;
+
+  background:
+    rgba(22, 23, 32, 0.98);
+
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.4);
+}
+
+
+.archive-quick-actions-menu button {
+  width:
+    100%;
+
+  padding:
+    9px 10px;
+
+  border:
+    0;
+
+  border-radius:
+    9px;
+
+  background:
+    transparent;
+
+  color:
+    white;
+
+  text-align:
+    left;
+
+  cursor:
+    pointer;
+}
+
+
+.archive-quick-actions-menu button:hover:not(:disabled) {
+  background:
+    rgba(255, 255, 255, 0.09);
+}
+
+
+.archive-quick-actions-divider {
+  height:
+    1px;
+
+  margin:
+    3px 0;
+
+  background:
+    rgba(255, 255, 255, 0.1);
+}
+
+
+.archive-quick-actions-message {
+  padding:
+    6px 9px;
+
+  color:
+    rgba(212, 240, 220, 0.95);
+
+  font-size:
+    0.72rem;
+}
+
+
+.archive-quick-actions-close {
+  opacity:
+    0.55;
+}
+/* ========================================
+   QOL: QUICK ACTION PLAYLIST + PAGE FIT
+======================================== */
+
+.quick-action-playlist-picker {
+  display:
+    grid;
+
+  gap:
+    6px;
+
+  padding:
+    7px;
+
+  border-radius:
+    9px;
+
+  background:
+    rgba(255, 255, 255, 0.05);
+}
+
+
+.quick-action-playlist-picker select {
+  width:
+    100%;
+
+  min-height:
+    34px;
+
+  padding:
+    5px 8px;
+
+  border:
+    1px solid rgba(255, 255, 255, 0.15);
+
+  border-radius:
+    8px;
+
+  background:
+    rgb(31, 32, 43);
+
+  color:
+    white;
+}
+
+
+.phone-media-card-wrapper .archive-quick-actions,
+.illusio-media-card-wrapper .archive-quick-actions,
+.main-story-part-wrapper .archive-quick-actions {
+  flex:
+    0 0 auto;
+}
+
+
+.illusio-media-card-wrapper .archive-quick-actions {
+  position:
+    absolute;
+
+  top:
+    12px;
+
+  right:
+    12px;
+
+  z-index:
+    8;
+}
+
+
+.main-story-part-wrapper .archive-quick-actions {
+  position:
+    relative;
+
+  z-index:
+    8;
+}
+/* ========================================
+   QOL: PLAYER UP NEXT + KEYBOARD
+======================================== */
+
+.player-up-next {
+  margin:
+    16px 0;
+
+  padding:
+    14px;
+
+  border:
+    1px solid rgba(255, 255, 255, 0.12);
+
+  border-radius:
+    16px;
+
+  background:
+    rgba(255, 255, 255, 0.035);
+}
+
+
+.player-up-next > header {
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  justify-content:
+    space-between;
+
+  gap:
+    12px;
+
+  margin-bottom:
+    10px;
+}
+
+
+.player-up-next > header div {
+  display:
+    grid;
+
+  gap:
+    2px;
+}
+
+
+.player-up-next > header button {
+  padding:
+    7px 11px;
+
+  border:
+    1px solid rgba(255, 255, 255, 0.16);
+
+  border-radius:
+    999px;
+
+  background:
+    transparent;
+
+  color:
+    rgba(255, 255, 255, 0.72);
+
+  cursor:
+    pointer;
+}
+
+
+.player-up-next-list {
+  display:
+    grid;
+
+  gap:
+    6px;
+}
+
+
+.player-up-next-list button {
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  justify-content:
+    space-between;
+
+  gap:
+    12px;
+
+  padding:
+    9px 11px;
+
+  border:
+    0;
+
+  border-radius:
+    10px;
+
+  background:
+    rgba(255, 255, 255, 0.045);
+
+  color:
+    white;
+
+  text-align:
+    left;
+
+  cursor:
+    pointer;
+}
+
+
+.player-up-next-list button:hover {
+  background:
+    rgba(255, 255, 255, 0.09);
+}
+
+
+.player-up-next-list span {
+  flex:
+    0 0 auto;
+
+  opacity:
+    0.5;
+
+  font-size:
+    0.72rem;
+}
+
+
+.player-keyboard-hint {
+  margin:
+    10px 0 16px;
+
+  color:
+    rgba(255, 255, 255, 0.42);
+
+  font-size:
+    0.7rem;
+
+  line-height:
+    1.5;
+}
+
+
+@media (max-width: 700px) {
+
+  .player-keyboard-hint {
+    display:
+      none;
+  }
+
+
+  .player-up-next-list button {
+    align-items:
+      flex-start;
+
+    flex-direction:
+      column;
+  }
+
+}

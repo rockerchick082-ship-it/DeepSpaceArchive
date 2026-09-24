@@ -239,6 +239,14 @@ const NewContentInboxPage =
       )
   )
 
+const OfflineDownloadsPage =
+  lazy(
+    () =>
+      import(
+        './pages/OfflineDownloadsPage'
+      )
+  )
+
 const MetadataHealthPage =
   lazy(
     () =>
@@ -2879,6 +2887,13 @@ function App() {
             <PlaylistDetailPage />
           }
         />
+        <Route
+          path="/offline-downloads"
+          element={
+            <OfflineDownloadsPage />
+          }
+        />
+
 <Route
   path="/phone"
   element={

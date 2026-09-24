@@ -19,6 +19,16 @@ import { useMediaTags } from '../data/mediaTags'
 import { MediaTagChips, MediaTagEditor } from './MediaTagControls'
 
 
+import {
+  readArchiveViewState,
+  restoreArchiveScroll,
+  saveArchiveScroll,
+  writeArchiveViewState,
+} from '../data/archiveViewState'
+
+import ArchiveQuickActions
+  from './ArchiveQuickActions'
+
 type PhoneArchivePageProps = {
   title: string
   eyebrow: string
@@ -284,6 +294,37 @@ function PhoneArchivePage({
   category,
 }: PhoneArchivePageProps) {
 
+  const phoneViewStateKey =
+    `phone:${category}`
+
+
+  const initialViewState =
+    useMemo(
+      () =>
+        readArchiveViewState(
+          phoneViewStateKey,
+          {
+            character:
+              'All',
+
+            search:
+              '',
+
+            status:
+              'all',
+
+            tag:
+              'All',
+
+            sort:
+              'archive-order',
+          }
+        ),
+      [
+        phoneViewStateKey,
+      ]
+    )
+
   const { characters: discoveredCharacters } = useArchiveCharacters()
 
   const characters = [
@@ -324,7 +365,7 @@ function PhoneArchivePage({
     setSelectedCharacter,
   ] =
     useState(
-      'All'
+      initialViewState.character
     )
 
   const [
@@ -332,32 +373,28 @@ function PhoneArchivePage({
     setSearchText,
   ] =
     useState(
-      ''
+      initialViewState.search
     )
 
   const [
     statusFilter,
     setStatusFilter,
   ] =
-    useState<PhoneStatusFilter>(
-      'all'
-    )
+    useState<PhoneStatusFilter>(initialViewState.status as PhoneStatusFilter)
 
   const [
     selectedTag,
     setSelectedTag,
   ] =
     useState(
-      'All'
+      initialViewState.tag
     )
 
   const [
     sortMode,
     setSortMode,
   ] =
-    useState<PhoneSort>(
-      'archive-order'
-    )
+    useState<PhoneSort>(initialViewState.sort as PhoneSort)
 
   const [
     loading,
@@ -391,6 +428,98 @@ function PhoneArchivePage({
       null
     )
 
+
+  useEffect(
+    () => {
+
+      writeArchiveViewState(
+        phoneViewStateKey,
+        {
+          character:
+            selectedCharacter,
+
+          search:
+            searchText,
+
+          status:
+            statusFilter,
+
+          tag:
+            selectedTag,
+
+          sort:
+            sortMode,
+        }
+      )
+
+    },
+    [
+      phoneViewStateKey,
+      searchText,
+      selectedCharacter,
+      selectedTag,
+      sortMode,
+      statusFilter,
+    ]
+  )
+
+
+  useEffect(
+    () => {
+
+      if (
+        loading
+      ) {
+
+        return
+
+      }
+
+
+      const restoreTimer =
+        window.setTimeout(
+          () =>
+            restoreArchiveScroll(
+              phoneViewStateKey
+            ),
+          0
+        )
+
+
+      const save =
+        () =>
+          saveArchiveScroll(
+            phoneViewStateKey
+          )
+
+
+      window.addEventListener(
+        'pagehide',
+        save
+      )
+
+
+      return () => {
+
+        window.clearTimeout(
+          restoreTimer
+        )
+
+        window.removeEventListener(
+          'pagehide',
+          save
+        )
+
+        save()
+
+      }
+
+    },
+    [
+      loading,
+      phoneViewStateKey,
+    ]
+  )
 
   const fetchItems =
     useCallback(
@@ -1533,27 +1662,57 @@ function PhoneArchivePage({
                         </button>
 
 
-                        <MediaTagEditor
-                          title={
-                            item.title
-                          }
-                          tags={
-                            tagsFor(
-                              item.category,
-                              item.relativePath
-                            )
-                          }
-                          availableTags={
-                            availableTags
-                          }
-                          onSave={(nextTags) =>
-                            saveTags(
-                              item.category,
-                              item.relativePath,
-                              nextTags
-                            )
-                          }
-                          buttonClassName="phone-media-tag-button"
+                        <MediaTagEditor
+                          title={
+                            item.title
+                          }
+                          tags={
+                            tagsFor(
+                              item.category,
+                              item.relativePath
+                            )
+                          }
+                          availableTags={
+                            availableTags
+                          }
+                          onSave={(nextTags) =>
+                            saveTags(
+                              item.category,
+                              item.relativePath,
+                              nextTags
+                            )
+                          }
+                          buttonClassName="phone-media-tag-button"
+                        />
+
+
+                        <ArchiveQuickActions
+                          category={
+                            item.category
+                          }
+                          relativePath={
+                            item.relativePath
+                          }
+                          title={
+                            item.title
+                          }
+                          character={
+                            item.character
+                          }
+                          playerPath="/phone/watch"
+                          state={
+                            state
+                          }
+                          onStateChange={(nextState) =>
+                            setArchiveStates(
+                              (current) => ({
+                                ...current,
+
+                                [key]:
+                                  nextState,
+                              })
+                            )
+                          }
                         />
 
                       </div>

@@ -400,6 +400,75 @@ export function saveProgress(
 }
 
 
+export function setCompletion(
+  category: string,
+  relativePath: string,
+  completed: boolean
+) {
+
+  ensureState(
+    category,
+    relativePath
+  )
+
+
+  const current =
+    getArchiveState(
+      category,
+      relativePath
+    )
+
+
+  const completedProgress =
+    completed
+      ? (
+          current.durationSeconds &&
+          current.durationSeconds >
+            0
+            ? current.durationSeconds
+            : current.progressSeconds
+        )
+      : 0
+
+
+  database
+    .prepare(`
+      UPDATE archive_state
+      SET
+        completed = ?,
+        progress_seconds = ?,
+        last_watched =
+          CASE
+            WHEN ? = 1
+            THEN ?
+            ELSE last_watched
+          END
+      WHERE
+        category = ?
+        AND relative_path = ?
+    `)
+    .run(
+      completed
+        ? 1
+        : 0,
+      completedProgress,
+      completed
+        ? 1
+        : 0,
+      new Date()
+        .toISOString(),
+      category,
+      relativePath
+    )
+
+
+  return getArchiveState(
+    category,
+    relativePath
+  )
+
+}
+
 export function resetCompletion(
   category: string,
   relativePath: string

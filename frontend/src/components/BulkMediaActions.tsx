@@ -31,6 +31,11 @@ async function readError(
   return body?.error ?? fallback
 }
 
+function initialExpandedState() {
+  if (typeof window === 'undefined') return true
+  return !window.matchMedia('(max-width: 700px)').matches
+}
+
 function BulkMediaActions({
   items,
   label,
@@ -41,6 +46,7 @@ function BulkMediaActions({
   const [playlistId, setPlaylistId] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [expanded, setExpanded] = useState(initialExpandedState)
 
   const uniqueItems = useMemo(() => {
     const seen = new Set<string>()
@@ -104,7 +110,7 @@ function BulkMediaActions({
       setBusy(true)
       setMessage('')
 
-      const results = await Promise.all(
+      await Promise.all(
         uniqueItems.map(async (item) => {
           const response = await fetch(
             `/api/archive/${endpoint}`,
@@ -129,7 +135,6 @@ function BulkMediaActions({
         })
       )
 
-      void results
       await finish(success)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Bulk update failed.')
@@ -211,56 +216,76 @@ function BulkMediaActions({
   }
 
   return (
-    <section className="bulk-media-actions" aria-label="Bulk media actions">
+    <section
+      className={`bulk-media-actions${expanded ? ' expanded' : ''}`}
+      aria-label="Bulk media actions"
+    >
       <div className="bulk-media-actions-summary">
-        <strong>
-          {label ?? `${uniqueItems.length} selected`}
-        </strong>
-        <span>
-          {uniqueItems.length} item{uniqueItems.length === 1 ? '' : 's'}
-        </span>
+        <div className="bulk-media-actions-copy">
+          <span className="bulk-media-actions-kicker">BULK EDIT</span>
+          <strong>{label ?? `${uniqueItems.length} selected`}</strong>
+        </div>
+
+        <button
+          type="button"
+          className="bulk-media-actions-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {expanded ? 'Hide' : 'Actions'}
+          <span aria-hidden="true">{expanded ? '⌃' : '⌄'}</span>
+        </button>
       </div>
 
-      <div className="bulk-media-actions-buttons">
-        <button type="button" disabled={busy} onClick={() => void setBooleanState('favorite', 'favorite', true, 'Selected items added to favorites.')}>
-          Favorite
-        </button>
-        <button type="button" disabled={busy} onClick={() => void setBooleanState('completion', 'completed', true, 'Selected items marked watched.')}>
-          Watched
-        </button>
-        <button type="button" disabled={busy} onClick={() => void setBooleanState('completion', 'completed', false, 'Selected items marked unwatched.')}>
-          Unwatched
-        </button>
-        <button type="button" disabled={busy} onClick={() => void addTags()}>
-          Add tags
-        </button>
-
-        {playlists.length > 0 && (
-          <>
-            <select
-              aria-label="Bulk playlist"
-              disabled={busy}
-              value={playlistId}
-              onChange={(event) => setPlaylistId(event.target.value)}
-            >
-              {playlists.map((playlist) => (
-                <option key={playlist.id} value={playlist.id}>
-                  {playlist.name}
-                </option>
-              ))}
-            </select>
-            <button type="button" disabled={busy || !playlistId} onClick={() => void addToPlaylist()}>
-              Add to playlist
+      {expanded && (
+        <div className="bulk-media-actions-body">
+          <div className="bulk-media-actions-buttons">
+            <button type="button" disabled={busy} onClick={() => void setBooleanState('favorite', 'favorite', true, 'Shown items added to favorites.')}>
+              Favorite
             </button>
-          </>
-        )}
+            <button type="button" disabled={busy} onClick={() => void setBooleanState('completion', 'completed', true, 'Shown items marked watched.')}>
+              Watched
+            </button>
+            <button type="button" disabled={busy} onClick={() => void setBooleanState('completion', 'completed', false, 'Shown items marked unwatched.')}>
+              Unwatched
+            </button>
+            <button type="button" disabled={busy} onClick={() => void addTags()}>
+              Add tags
+            </button>
+          </div>
 
-        {onClear && (
-          <button type="button" disabled={busy} onClick={onClear}>
-            Clear selection
-          </button>
-        )}
-      </div>
+          {playlists.length > 0 && (
+            <div className="bulk-media-actions-playlist">
+              <select
+                aria-label="Bulk playlist"
+                disabled={busy}
+                value={playlistId}
+                onChange={(event) => setPlaylistId(event.target.value)}
+              >
+                {playlists.map((playlist) => (
+                  <option key={playlist.id} value={playlist.id}>
+                    {playlist.name}
+                  </option>
+                ))}
+              </select>
+              <button type="button" disabled={busy || !playlistId} onClick={() => void addToPlaylist()}>
+                Add to playlist
+              </button>
+            </div>
+          )}
+
+          {onClear && (
+            <button
+              type="button"
+              className="bulk-media-actions-clear"
+              disabled={busy}
+              onClick={onClear}
+            >
+              Clear selection
+            </button>
+          )}
+        </div>
+      )}
 
       {message && (
         <p className="bulk-media-actions-message" aria-live="polite">

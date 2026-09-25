@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   useEffect,
   useState,
 } from 'react'
@@ -31,6 +32,11 @@ type MissingCoverageItem = {
 type CompletenessResponse = {
   categories?: CategoryCoverage[]
   missingItems?: MissingCoverageItem[]
+}
+
+
+type CoverageStyle = CSSProperties & {
+  '--archive-coverage-percent'?: string
 }
 
 
@@ -105,27 +111,62 @@ function ArchiveCoverageNotice({
   if (!coverage || coverage.expected === 0) return null
 
   const issues = coverage.missing + coverage.stale
+  const percentLabel = coverage.percent === null
+    ? '—'
+    : `${coverage.percent.toFixed(coverage.percent % 1 === 0 ? 0 : 1)}%`
+  const progressPercent = Math.max(0, Math.min(100, coverage.percent ?? 0))
+  const style: CoverageStyle = {
+    '--archive-coverage-percent': `${progressPercent}%`,
+  }
 
   return (
-    <section className={`archive-coverage-notice ${issues > 0 ? 'has-missing' : 'complete'}`}>
-      <Link
-        to={`/settings/completeness?category=${encodeURIComponent(coverage.key)}`}
-        className="archive-coverage-notice-summary"
+    <section
+      className={`archive-coverage-notice ${issues > 0 ? 'has-missing' : 'complete'}`}
+      style={style}
+    >
+      <div className="archive-coverage-notice-summary">
+        <div className="archive-coverage-copy">
+          <span className="archive-coverage-kicker">
+            {issues > 0 ? 'ARCHIVE COVERAGE' : 'ARCHIVE COMPLETE'}
+          </span>
+
+          <div className="archive-coverage-metric">
+            <strong>{percentLabel}</strong>
+            <span>archived</span>
+          </div>
+
+          <span className="archive-coverage-count">
+            {coverage.present} of {coverage.expected} expected
+            {issues > 0
+              ? ` · ${coverage.missing} missing${coverage.stale ? ` · ${coverage.stale} stale` : ''}`
+              : ' · complete'}
+          </span>
+        </div>
+
+        <Link
+          to={`/settings/completeness?category=${encodeURIComponent(coverage.key)}`}
+          className="archive-coverage-link"
+        >
+          Details
+          <span aria-hidden="true">›</span>
+        </Link>
+      </div>
+
+      <div
+        className="archive-coverage-progress"
+        role="progressbar"
+        aria-label={`${coverage.label} archive coverage`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={coverage.percent ?? undefined}
       >
-        <strong>
-          {coverage.percent === null ? '—' : `${coverage.percent.toFixed(coverage.percent % 1 === 0 ? 0 : 1)}%`} archived
-        </strong>
-        <span>
-          {coverage.present} of {coverage.expected} expected
-          {issues > 0 ? ` · ${coverage.missing} missing${coverage.stale ? ` · ${coverage.stale} stale` : ''}` : ' · complete'}
-        </span>
-        <span>View coverage ›</span>
-      </Link>
+        <span />
+      </div>
 
       {missingItems.length > 0 && (
         <details className="archive-coverage-missing-list">
           <summary>
-            Missing from this archive ({missingItems.length})
+            Missing items ({missingItems.length})
           </summary>
           <div>
             {missingItems.slice(0, 8).map((item) => (
